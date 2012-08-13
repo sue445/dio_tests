@@ -1,5 +1,9 @@
 #!/usr/bin/ruby
 
+=begin
+Usage: ruby dio_tests/rspec.rb <commit>
+=end
+
 testcase_regexp = "\s*its?"
 user = `git config --get user.name`.strip
 since_commit = ARGV[0] || "master"
@@ -16,5 +20,5 @@ minus_grep = "#{git_log} | grep -E '^-#{testcase_regexp}' -c"
 plus_count = `#{plus_grep}`.strip.to_i
 minus_count = `#{minus_grep}`.strip.to_i
 
-p "plus=#{plus_count}, minus=#{minus_count}, diff=#{plus_count - minus_count}"
+p "plus=#{plus_count}, minus=#{minus_count}, increment=#{plus_count - minus_count}"
 
