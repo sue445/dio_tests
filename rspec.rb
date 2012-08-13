@@ -8,7 +8,5 @@ Usage: ruby dio_tests/rspec.rb <commit>
 $:.unshift File.dirname(__FILE__)
 require 'dio_tests'
 
-testcase_regexp = "\s*its?"
-
-print_test_count testcase_regexp
+print_test_count "\s*its?"
 
