@@ -2,9 +2,9 @@
 #!/usr/bin/ruby
 
 def print_test_count(testcase_regexp)
-  user = `git config --get user.name`.strip
+  author = `git config --get user.name`.strip
   since_commit = ARGV[0] || "master"
-  git_log = "git log --author=#{user} --remove-empty --oneline --unified=0 --ignore-all-space #{since_commit}..HEAD"
+  git_log = "git log --author=#{author} --remove-empty --oneline --unified=0 --ignore-all-space #{since_commit}..HEAD"
 
   p git_log
 
