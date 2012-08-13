@@ -2,3 +2,5 @@
 
 自分のコミットログからテストを数えます
 
+    ruby dio_tests/rspec.rb master
+
