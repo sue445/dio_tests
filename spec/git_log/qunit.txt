@@ -1,0 +1,153 @@
+d1ca8ad modify semicolon
+diff --git a/src/event.js b/src/event.js
+index 80c0c99..0390728 100644
+--- a/src/event.js
++++ b/src/event.js
+@@ -96 +96 @@ azusaar.event.SearchEventBase.prototype = {
+-            data.keyword = keyword
++            data.keyword = keyword;
+4237ecc add test
+diff --git a/test/event_zusaar_origin_test.js b/test/event_zusaar_origin_test.js
+index 1eac8cc..72b2fb2 100644
+--- a/test/event_zusaar_origin_test.js
++++ b/test/event_zusaar_origin_test.js
+@@ -35,0 +36,21 @@ $(document).ready(function(){
++
++    // TODO Zusaar APIのバグ（？）により結果が取れないorz
++//    test("searchMonthly with owner_id", function() {
++//        expect(2);
++//        stop();
++//
++//        var actualStartedAt;
++//        var actualEventCount = 0;
++//        sut.addCallback = function(event){
++//            actualEventCount++;
++//            actualStartedAt = azusaar.util.parseDate(event.started_at);
++//        };
++//        sut.pagingFinishCallback = sinon.stub();
++//
++//        var d = sut.searchMonthly({year:2012, month:4, owner_id: "agxzfnp1c2Fhci1ocmRyFAsSBFVzZXIiCjQ5MzM0MDFfdHcM"});
++//        d.then(function(){
++//            start();
++//            assert.strictEqual(actualEventCount, 4);
++//            assert.ok(actualStartedAt.sameMonth({year:2012, month: 4}), "actual="+actualStartedAt);
++//        });
++//    });
+9dab557 add zusaar_origin
+diff --git a/src/event.js b/src/event.js
+index cbba69f..80c0c99 100644
+--- a/src/event.js
++++ b/src/event.js
+@@ -206,0 +207,8 @@ azusaar.event.zusaar = new azusaar.event.SearchEventBase({
++azusaar.event.zusaar_origin = new azusaar.event.SearchEventBase({
++    apiUrl:"http://www.zusaar.com/api/event/",
++    icon:"zusaar",
++    cache: false,
++    format:"jsonp",
++    canUseAllReturn: false
++});
++
+diff --git a/t/event_zusaar_origin_test.sh b/t/event_zusaar_origin_test.sh
+new file mode 100755
+index 0000000..63c4479
+--- /dev/null
++++ b/t/event_zusaar_origin_test.sh
+@@ -0,0 +1,7 @@
++#!/bin/sh
++SCRIPT_DIR=`dirname $0`
++cd $SCRIPT_DIR
++
++. inc/common.sh
++
++runtest "event_zusaar_origin_test"
+diff --git a/test/event_zusaar_origin_test.html b/test/event_zusaar_origin_test.html
+new file mode 100644
+index 0000000..d49a6de
+--- /dev/null
++++ b/test/event_zusaar_origin_test.html
+@@ -0,0 +1,43 @@
++<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
++        "http://www.w3.org/TR/html4/loose.dtd">
++<html>
++<head>
++    <link rel="stylesheet" href="../testlib/qunit.css" type="text/css" media="screen" />
++
++    <!-- lib -->
++    <script type="text/javascript" charset="UTF-8" src="../lib/jquery-1.6.2.js"></script>
++
++    <script type="text/javascript" charset="UTF-8" src="../testlib/qunit.js"></script>
++    <script type="text/javascript" charset="UTF-8" src="../testlib/jquery.mockjax.js"></script>
++    <script type="text/javascript" charset="UTF-8" src="../testlib/sinon-1.3.4.js"></script>
++    <script type="text/javascript" charset="UTF-8" src="../testlib/assertThat.js"></script>
++
++    <!-- src -->
++    <!--
++    <script type="text/javascript" charset="UTF-8" src="../src/"></script>
++    -->
++    <script type="text/javascript" charset="UTF-8" src="../src/event.js"></script>
++    <script type="text/javascript" charset="UTF-8" src="../src/extend.js"></script>
++    <script type="text/javascript" charset="UTF-8" src="../src/util.js"></script>
++
++    <!-- test -->
++    <!--
++    <script type="text/javascript" charset="UTF-8" src=""></script>
++    -->
++    <script type="text/javascript" charset="UTF-8" src="event_zusaar_origin_test.js"></script>
++
++    <!-- QUnit-TAP -->
++    <script type="text/javascript" charset="UTF-8" src="../testlib/qunit-tap.js"></script>
++    <script>
++        qunitTap(QUnit, function() { console.log.apply(console, arguments); }, {noPlan: true});
++    </script>
++</head>
++<body>
++<h1 id="qunit-header">QUnit example</h1>
++<h2 id="qunit-banner"></h2>
++<div id="qunit-testrunner-toolbar"></div>
++<h2 id="qunit-userAgent"></h2>
++<ol id="qunit-tests"></ol>
++<div id="qunit-fixture">test markup, will be hidden</div>
++</body>
++</html>
+diff --git a/test/event_zusaar_origin_test.js b/test/event_zusaar_origin_test.js
+new file mode 100644
+index 0000000..1eac8cc
+--- /dev/null
++++ b/test/event_zusaar_origin_test.js
+@@ -0,0 +1,36 @@
++$(document).ready(function(){
++    var sut = azusaar.event.zusaar_origin;
++    var timeout = 5000;
++
++    module("azusaar.event.zusaar_origin", {
++        setup: function(){
++            // use new instance at own test
++            var params = $.extend(true, {}, azusaar.event.zusaar_origin.initParams);
++            sut = new azusaar.event.SearchEventBase(params);
++
++            azusaar.main = {
++                showPageLoadingMsg : function(){}
++            };
++        }
++    });
++
++    test("searchMonthly", function() {
++        expect(2);
++        stop();
++
++        var actualStartedAt;
++        var actualEventCount = 0;
++        sut.addCallback = function(event){
++            actualEventCount++;
++            actualStartedAt = azusaar.util.parseDate(event.started_at);
++        };
++        sut.pagingFinishCallback = sinon.stub();
++
++        var d = sut.searchMonthly({year:2012, month:4});
++        d.then(function(){
++            start();
++            assert.strictEqual(actualEventCount, 87);
++            assert.ok(actualStartedAt.sameMonth({year:2012, month: 4}), "actual="+actualStartedAt);
++        });
++    });
++});

@@ -1,0 +1,47 @@
+81f981d need to reduce the moneys used to buy
+diff --git a/spec/vending_machine_spec.rb b/spec/vending_machine_spec.rb
+index c9dc7b9..b4be629 100644
+--- a/spec/vending_machine_spec.rb
++++ b/spec/vending_machine_spec.rb
+@@ -104,5 +104,5 @@ describe VendingMachine do
+-    #context 'コーラを購入したあと' do
+-      #it '釣り銭を出力する' do
+-        #subject.refund.should == [:yen10, :yen10, :yen10, :yen100]
+-      #end
+-    #end
++    context 'コーラを購入したあと' do
++      it '釣り銭を出力する' do
++        subject.refund.should == 130
++      end
++    end
+c94f953 amend refund to return the total amount of money
+diff --git a/spec/vending_machine_spec.rb b/spec/vending_machine_spec.rb
+index 83fc6bf..c9dc7b9 100644
+--- a/spec/vending_machine_spec.rb
++++ b/spec/vending_machine_spec.rb
+@@ -97,0 +98 @@ describe VendingMachine do
++    context '何も購入しない' do
+@@ -99 +100 @@ describe VendingMachine do
+-      subject.refund.should == [:yen50, :yen100, :yen100]
++        subject.refund.should == 250
+@@ -102,0 +104,7 @@ describe VendingMachine do
++    #context 'コーラを購入したあと' do
++      #it '釣り銭を出力する' do
++        #subject.refund.should == [:yen10, :yen10, :yen10, :yen100]
++      #end
++    #end
++  end
++
+diff --git a/vending_machine.rb b/vending_machine.rb
+index be01685..88d82d0 100644
+--- a/vending_machine.rb
++++ b/vending_machine.rb
+@@ -29,7 +29 @@ class VendingMachine
+-    result = []
+-    @moneys.each { |money, count|
+-      count.times do
+-        result << money 
+-      end
+-    }
+-    result
++    calc_total

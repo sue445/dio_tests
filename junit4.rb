@@ -8,5 +8,5 @@ Usage: ruby dio_tests/junit4.rb <commit>
 $:.unshift File.dirname(__FILE__)
 require 'dio_tests'
 
-print_test_count "\\s*@(Test|Theory)"
+DioTests.new.print_test_count "@(Test|Theory)"
 

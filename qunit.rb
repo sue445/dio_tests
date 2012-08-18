@@ -2,11 +2,11 @@
 #!/usr/bin/ruby
 
 =begin
-Usage: ruby dio_tests/rspec.rb <commit>
+Usage: ruby dio_tests/qunit.rb <commit>
 =end
 
 $:.unshift File.dirname(__FILE__)
 require 'dio_tests'
 
-DioTests.new.print_test_count "^\s*its?"
+DioTests.new.print_test_count "^\s*test"
 

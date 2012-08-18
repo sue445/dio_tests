@@ -1,23 +1,34 @@
 # -*- encoding: utf-8 -*-
-#!/usr/bin/ruby
 
-def print_test_count(testcase_regexp)
-  author = `git config --get user.name`.strip
-  since_commit = ARGV[0] || "master"
-  git_log = "git log --author=#{author} --remove-empty --oneline --unified=0 --ignore-all-space #{since_commit}..HEAD"
+class DioTests
+  attr_reader :plus_count, :minus_count
 
-  p git_log
+  def print_test_count(testcase_regexp)
+    log = git_log
 
-  plus_grep = "#{git_log} | grep -E '^\\+#{testcase_regexp}' -c"
-  minus_grep = "#{git_log} | grep -E '^-#{testcase_regexp}' -c"
+    @plus_count = log.each_line.select{|line| line[0] == "+"}.
+      inject(0){|count, line|
+        line[0] = ""
+        count += 1 if line =~ /#{testcase_regexp}/
+        count
+      } || 0
 
-  #p plus_grep
-  #p minus_grep
+    @minus_count = log.each_line.select{|line| line[0] == "-"}.
+      inject(0){|count, line|
+        line[0] = ""
+        count += 1 if line =~ /#{testcase_regexp}/
+        count
+      } || 0
 
-  plus_count = `#{plus_grep}`.strip.to_i
-  minus_count = `#{minus_grep}`.strip.to_i
+    p "plus=#{@plus_count}, minus=#{@minus_count}, increment=#{@plus_count - @minus_count}"
+  end
 
-  p "plus=#{plus_count}, minus=#{minus_count}, increment=#{plus_count - minus_count}"
+  def git_log
+    author = `git config --get user.name`.strip
+    since_commit = ARGV[0] || "master"
+
+    p "git log --author=#{author} --remove-empty --oneline --unified=0 --ignore-all-space #{since_commit}..HEAD"
+    `git log --author=#{author} --remove-empty --oneline --unified=0 --ignore-all-space #{since_commit}..HEAD`
+  end
 end
-
 

@@ -1,0 +1,2715 @@
+3a72fdc impl Twitter login home
+diff --git a/eclipse.lib/scenic3-0.5.1.jar b/eclipse.lib/scenic3-0.5.1.jar
+new file mode 100644
+index 0000000..3d65267
+Binary files /dev/null and b/eclipse.lib/scenic3-0.5.1.jar differ
+diff --git a/pom.xml b/pom.xml
+index 809997e..4593a77 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -13 +13,3 @@
+-    <twitter4j.version>2.2.5</twitter4j.version>
++    <twitter4j.version>2.2.6</twitter4j.version>
++    <scenic3.version>0.5.1</scenic3.version>
++    <slim3.rootPackage>net.sue445.azusaar</slim3.rootPackage>
+@@ -41,0 +44,9 @@
++    <repository>
++      <id>maven.deathmarch.jp</id>
++      <name>The Deathmarch Maven2 Repository</name>
++      <url>http://maven.deathmarch.jp/maven2</url>
++      <snapshots>
++        <enabled>true</enabled>
++        <updatePolicy>always</updatePolicy>
++      </snapshots>
++    </repository>
+@@ -104,0 +116,5 @@
++      <groupId>jstl</groupId>
++      <artifactId>jstl</artifactId>
++      <version>1.2</version>
++    </dependency>
++    <dependency>
+@@ -189,0 +206,5 @@
++    <dependency>
++      <groupId>scenic3</groupId>
++      <artifactId>scenic3</artifactId>
++      <version>${scenic3.version}</version>
++    </dependency>
+@@ -248,0 +270,3 @@
++          <options>
++            <option>slim3.rootPackage=${slim3.rootPackage}</option>
++          </options>
+@@ -284 +308 @@
+-              <includeArtifactIds>slim3-gen</includeArtifactIds>
++              <includeArtifactIds>slim3-gen,scenic3</includeArtifactIds>
+@@ -351,0 +376 @@
++  <factorypathentry kind="WKSPJAR" id="/${artifactId}/${eclipse.lib}/scenic3-${scenic3.version}.jar" enabled="true" runInBatchMode="false"/>
+diff --git a/src/main/java/net/sue445/azusaar/controller/AppUrls.java b/src/main/java/net/sue445/azusaar/controller/AppUrls.java
+new file mode 100644
+index 0000000..a9f9eb1
+--- /dev/null
++++ b/src/main/java/net/sue445/azusaar/controller/AppUrls.java
+@@ -0,0 +1,35 @@
++package net.sue445.azusaar.controller;
++
++import net.sue445.azusaar.controller.matcher.HomePageMatcher;
++import scenic3.UrlsImpl;
++
++/**
++ * Scenic3でアプリケーションに利用するPageクラスを設定します。
++ *
++ * @author shuji.w6e
++ */
++public class AppUrls extends UrlsImpl {
++
++	public AppUrls() {
++		excludes(
++				"/*.png",
++				"/*.ico",
++				"/*.txt",
++				"/*.xml",
++				"/*.html",
++
++				"/_ah/*",
++				"/admin/*",
++				"/cn/*",
++				"/css/*",
++				"/img/*",
++				"/js/*",
++				"/ktrwjr/*",
++				"/smart/*"
++		);
++
++		// TODO Pageを追加したらこっちも追加する
++		add(HomePageMatcher.get());	// /home
++	}
++
++}
+\ No newline at end of file
+diff --git a/src/main/java/net/sue445/azusaar/controller/auth/CallbackController.java b/src/main/java/net/sue445/azusaar/controller/auth/CallbackController.java
+new file mode 100644
+index 0000000..8629d70
+--- /dev/null
++++ b/src/main/java/net/sue445/azusaar/controller/auth/CallbackController.java
+@@ -0,0 +1,66 @@
++package net.sue445.azusaar.controller.auth;
++
++import net.sue445.azusaar.dao.UserDao;
++import net.sue445.azusaar.model.UserModel;
++import net.sue445.azusaar.util.SessionUtil;
++import net.sue445.azusaar.util.SessionUtil.SessionKey;
++import net.sue445.azusaar.util.TwitterUtil;
++import net.sue445.common.logging.Jdk14LogFactory;
++import net.sue445.common.logging.Log;
++
++import org.slim3.controller.Controller;
++import org.slim3.controller.Navigation;
++
++import twitter4j.Twitter;
++import twitter4j.TwitterException;
++import twitter4j.auth.AccessToken;
++import twitter4j.auth.RequestToken;
++
++public class CallbackController extends Controller {
++	private static final Log log = Jdk14LogFactory.getLogger(CallbackController.class);
++
++	private final UserDao userDao = new UserDao();
++
++	// package private
++	static AccessToken mockAccessToken = null;
++
++	@Override
++	public Navigation run() throws Exception {
++		AccessToken accessToken = getAccessToken();
++		long userId = accessToken.getUserId();
++
++		UserModel userModel = userDao.getOrNew(userId);
++		userModel.setScreenName(accessToken.getScreenName());
++		userModel.setAccessToken(accessToken.getToken());
++		userModel.setAccessTokenSecret(accessToken.getTokenSecret());
++		userDao.put(userModel);
++
++		// indexに反映させるため1回getする
++		userDao.getOrNull(userId);
++
++		SessionUtil.remove(request, SessionKey.REQUEST_TOKEN);
++		SessionUtil.put(request, SessionKey.ACCESS_TOKEN, accessToken);
++
++		log.info("save accessToken success: " + accessToken);
++
++		if(userModel.getVersion() == 1){
++			// 未登録
++			return redirect("/home/");
++		}
++
++		// 登録済
++		return redirect("/");
++	}
++
++	private AccessToken getAccessToken() throws TwitterException {
++		if(mockAccessToken != null){
++			return mockAccessToken;
++		}
++
++		String oauthVerifier = asString("oauth_verifier");
++		RequestToken requestToken = SessionUtil.get(request, SessionKey.REQUEST_TOKEN);
++
++		Twitter twitter = TwitterUtil.getTwitter();
++		return twitter.getOAuthAccessToken(requestToken, oauthVerifier);
++	}
++}
+diff --git a/src/main/java/net/sue445/azusaar/controller/auth/LogoutController.java b/src/main/java/net/sue445/azusaar/controller/auth/LogoutController.java
+new file mode 100644
+index 0000000..012bc5f
+--- /dev/null
++++ b/src/main/java/net/sue445/azusaar/controller/auth/LogoutController.java
+@@ -0,0 +1,52 @@
++package net.sue445.azusaar.controller.auth;
++
++import javax.servlet.http.Cookie;
++
++import net.sue445.azusaar.dao.UserDao;
++import net.sue445.azusaar.model.UserModel;
++import net.sue445.azusaar.util.CookieUtil;
++import net.sue445.azusaar.util.SessionUtil;
++import net.sue445.azusaar.util.SessionUtil.SessionKey;
++import net.sue445.common.logging.Jdk14LogFactory;
++import net.sue445.common.logging.Log;
++
++import org.slim3.controller.Controller;
++import org.slim3.controller.Navigation;
++
++public class LogoutController extends Controller {
++	private static final Log log = Jdk14LogFactory.getLogger(LogoutController.class);
++
++	private final UserDao userDao = new UserDao();
++
++	@Override
++	public Navigation run() throws Exception {
++		UserModel currentUser = userDao.getCurrentUser(request, response);
++		if(currentUser == null){
++			log.debug("not logined");
++			return redirect("/");
++		}
++
++		currentUser.setAccessToken(null);
++		currentUser.setAccessTokenSecret(null);
++		userDao.put(currentUser);
++
++		SessionUtil.remove(request, SessionKey.ACCESS_TOKEN);
++
++		addNoExpiryCookie(CookieUtil.ACCESS_TOKEN);
++		addNoExpiryCookie(CookieUtil.ACCESS_TOKEN_SECRET);
++
++		log.info("logout success:" + currentUser.getKey());
++
++		return redirect("/");
++	}
++
++	/**
++	 * ブラウザでcookieを削除させるため、有効期限0秒のcookieをレスポンスに出力する
++	 * @param name
++	 */
++	private void addNoExpiryCookie(String name) {
++		Cookie cookie = new Cookie(name, "");
++		cookie.setMaxAge(0);
++		response.addCookie(cookie);
++	}
++}
+diff --git a/src/main/java/net/sue445/azusaar/controller/auth/UserInfoController.java b/src/main/java/net/sue445/azusaar/controller/auth/UserInfoController.java
+new file mode 100644
+index 0000000..ce8a826
+--- /dev/null
++++ b/src/main/java/net/sue445/azusaar/controller/auth/UserInfoController.java
+@@ -0,0 +1,43 @@
++package net.sue445.azusaar.controller.auth;
++
++import java.io.IOException;
++import java.util.LinkedHashMap;
++import java.util.Map;
++
++import net.sue445.azusaar.controller.AbstractApiController;
++import net.sue445.azusaar.dao.UserDao;
++import net.sue445.azusaar.dto.json.UserInfoDto;
++import net.sue445.azusaar.model.UserModel;
++
++import org.slim3.controller.Navigation;
++
++public class UserInfoController extends AbstractApiController {
++	private final UserDao userDao = new UserDao();
++
++	@Override
++	public Navigation run() throws Exception {
++		UserModel currentUser = userDao.getCurrentUser(request, response);
++		if(currentUser != null){
++			return responseLogined(currentUser);
++		}
++
++		// Twitter未ログイン
++		Map<String,String> map = new LinkedHashMap<String, String>();
++
++		String jsonContent = toJsonContent(map);
++		return responseJson(toJsonp(jsonContent));
++	}
++
++	private Navigation responseLogined(UserModel model) throws IOException {
++		UserInfoDto dto = new UserInfoDto();
++		dto.screenName = model.getScreenName();
++		dto.atndId = model.getAtndId();
++		dto.connpassId = model.getConnpassId();
++		dto.eventAtndId = model.getEventAtndId();
++		dto.partakeId = model.getPartakeId();
++		dto.zusaarId = model.getZusaarId();
++
++		String jsonContent = toJsonContent(dto);
++		return responseJson(toJsonp(jsonContent));
++	}
++}
+diff --git a/src/main/java/net/sue445/azusaar/dao/UserDao.java b/src/main/java/net/sue445/azusaar/dao/UserDao.java
+new file mode 100644
+index 0000000..e7d3bf2
+--- /dev/null
++++ b/src/main/java/net/sue445/azusaar/dao/UserDao.java
+@@ -0,0 +1,136 @@
++package net.sue445.azusaar.dao;
++
++import javax.servlet.http.Cookie;
++import javax.servlet.http.HttpServletRequest;
++import javax.servlet.http.HttpServletResponse;
++
++import net.sue445.azusaar.meta.UserModelMeta;
++import net.sue445.azusaar.model.UserModel;
++import net.sue445.azusaar.util.CookieUtil;
++import net.sue445.azusaar.util.SessionUtil;
++import net.sue445.azusaar.util.SessionUtil.SessionKey;
++
++import org.apache.commons.lang.StringUtils;
++import org.apache.commons.lang.time.DateUtils;
++import org.slim3.datastore.DaoBase;
++
++import twitter4j.auth.AccessToken;
++
++import com.google.appengine.api.datastore.Key;
++
++public class UserDao extends DaoBase<UserModel>{
++
++	/**
++	 *
++	 * @param mailAddress
++	 * @return
++	 */
++	public UserModel getOrNull(long twitterUserId){
++		Key key = UserModel.createKey(twitterUserId);
++		return super.getOrNull(key);
++	}
++
++	/**
++	 * tokenでユーザ検索する
++	 * @param accessToken
++	 * @param accessTokenSecret
++	 * @return		見つからなければnullを返す
++	 */
++	public UserModel findByOAuth(String accessToken, String accessTokenSecret){
++		if(StringUtils.isEmpty(accessToken) || StringUtils.isEmpty(accessTokenSecret)){
++			return null;
++		}
++
++		UserModelMeta e = UserModelMeta.get();
++		return query().filter(e.accessToken.equal(accessToken), e.accessTokenSecret.equal(accessTokenSecret)).asSingle();
++	}
++
++	/**
++	 *
++	 * @param twitterUserId
++	 * @return
++	 */
++	public UserModel getOrNew(long twitterUserId){
++		UserModel user = getOrNull(twitterUserId);
++		if(user != null){
++			return user;
++		}
++
++		return new UserModel(twitterUserId);
++	}
++
++	/**
++	 * <ul>
++	 * <li>ParamにaccessTokenとaccessTokenSecretがあればそれを元に {@link UserModel} を取得</li>
++	 * <li>CookieにaccessTokenとaccessTokenSecretがあればそれを元に {@link UserModel} を取得</li>
++	 * <li>Sessionに{@link AccessToken} があればそれを元に {@link UserModel} を取得し、cookieにaccessTokenとaccessTokenSecretを書き出す</li>
++	 * </ul>
++	 * @param request
++	 * @param response
++	 * @return		cookieとsessionのどっちにもなければnullを返す
++	 */
++	public UserModel getCurrentUser(HttpServletRequest request, HttpServletResponse response){
++		UserModel paramUser = getUserWithParam(request);
++		if(paramUser != null){
++			return paramUser;
++		}
++
++		UserModel cookieUser = getUserWithCookie(request);
++		if(cookieUser != null){
++			return cookieUser;
++		}
++
++		UserModel sessionUser = getUserWithSession(request);
++		if(sessionUser != null){
++			response.addCookie(createCookie(CookieUtil.ACCESS_TOKEN, sessionUser.getAccessToken()));
++			response.addCookie(createCookie(CookieUtil.ACCESS_TOKEN_SECRET, sessionUser.getAccessTokenSecret()));
++			return sessionUser;
++		}
++
++		return null;
++	}
++
++	/**
++	 *
++	 * @param request
++	 * @return
++	 */
++	private UserModel getUserWithParam(HttpServletRequest request){
++		String accessToken = request.getParameter(CookieUtil.ACCESS_TOKEN);
++		String accessTokenSecret = request.getParameter(CookieUtil.ACCESS_TOKEN_SECRET);
++
++		return findByOAuth(accessToken, accessTokenSecret);
++	}
++
++	/**
++	 *
++	 * @param request
++	 * @return
++	 */
++	private UserModel getUserWithCookie(HttpServletRequest request){
++		String accessToken = CookieUtil.findValue(request.getCookies(), CookieUtil.ACCESS_TOKEN);
++		String accessTokenSecret = CookieUtil.findValue(request.getCookies(), CookieUtil.ACCESS_TOKEN_SECRET);
++
++		return findByOAuth(accessToken, accessTokenSecret);
++	}
++
++	/**
++	 *
++	 * @param request
++	 * @return
++	 */
++	private UserModel getUserWithSession(HttpServletRequest request){
++		AccessToken accessToken = SessionUtil.get(request, SessionKey.ACCESS_TOKEN);
++		if(accessToken == null){
++			return null;
++		}
++
++		return findByOAuth(accessToken.getToken(), accessToken.getTokenSecret());
++	}
++
++	private Cookie createCookie(String name, String value) {
++		Cookie cookie = new Cookie(name, value);
++		cookie.setMaxAge((int) DateUtils.MILLIS_PER_DAY / 1000 * 30);
++		return cookie;
++	}
++}
+diff --git a/src/main/java/net/sue445/azusaar/dao/UserProxyDao.java b/src/main/java/net/sue445/azusaar/dao/UserProxyDao.java
+new file mode 100644
+index 0000000..c993a54
+--- /dev/null
++++ b/src/main/java/net/sue445/azusaar/dao/UserProxyDao.java
+@@ -0,0 +1,113 @@
++package net.sue445.azusaar.dao;
++
++import net.sue445.azusaar.model.UserModel;
++import net.sue445.azusaar.util.TwitterUtil;
++import net.sue445.common.logging.Jdk14LogFactory;
++import net.sue445.common.logging.Log;
++import net.sue445.kulib.util.MemcacheUtil;
++
++import org.apache.commons.lang.StringUtils;
++import org.slim3.memcache.Memcache;
++
++import twitter4j.Twitter;
++
++import com.google.appengine.api.datastore.Key;
++
++public class UserProxyDao {
++	private static final Log log = Jdk14LogFactory.getLogger(UserProxyDao.class);
++
++	/**
++	 * 直前にMemcacheからレスポンスを取得したかどうか（テスト用）
++	 */
++	// package private
++	boolean wasMemcacheResponse = false;
++
++	/**
++	 *
++	 * @param accessToken
++	 * @param accessTokenSecret
++	 * @return {@link UserModel} のkey
++	 */
++	public Key get(String accessToken, String accessTokenSecret){
++		wasMemcacheResponse = false;
++
++		if(StringUtils.isBlank(accessToken) || StringUtils.isBlank(accessTokenSecret)){
++			return null;
++		}
++
++		Key key = getFromMemcache(accessToken, accessTokenSecret);
++		if(key != null){
++			wasMemcacheResponse = true;
++			return key;
++		}
++
++		// tokenが無効だったらcallbackから再度取得させる
++		if(!verifyCredentials(accessToken, accessTokenSecret)){
++			return null;
++		}
++
++		return getFromDatastore(accessToken, accessTokenSecret);
++	}
++
++	private boolean verifyCredentials(String accessToken, String accessTokenSecret) {
++		try {
++			Twitter twitter = TwitterUtil.getTwitter(accessToken, accessTokenSecret);
++			twitter.verifyCredentials();
++			return true;
++		} catch (Exception e) {
++			log.warn("can not verifyCredentials", e);
++			return false;
++		}
++	}
++
++	/**
++	 *
++	 * @param accessToken
++	 * @param accessTokenSecret
++	 * @return
++	 */
++	private Key getFromMemcache(String accessToken, String accessTokenSecret) {
++		String memcacheKey = createMemcacheKey(accessToken, accessTokenSecret);
++		return Memcache.<Key>get(memcacheKey);
++	}
++
++	/**
++	 *
++	 * @param accessToken
++	 * @param accessTokenSecret
++	 * @return
++	 */
++	private String createMemcacheKey(String accessToken, String accessTokenSecret) {
++		return MemcacheUtil.createKeyPrefix(UserProxyDao.class) + accessToken + "_" + accessTokenSecret;
++	}
++
++	/**
++	 *
++	 * @param accessToken
++	 * @param accessTokenSecret
++	 * @return
++	 */
++	private Key getFromDatastore(String accessToken, String accessTokenSecret) {
++		UserDao userDao = new UserDao();
++		UserModel userModel = userDao.findByOAuth(accessToken, accessTokenSecret);
++		if(userModel == null){
++			return null;
++		}
++
++		String memcacheKey = createMemcacheKey(accessToken, accessTokenSecret);
++		Memcache.put(memcacheKey, userModel.getKey());
++
++		return userModel.getKey();
++	}
++
++	/**
++	 * アクセストークンが有効かどうか
++	 * @param accessToken
++	 * @param accessTokenSecret
++	 * @return
++	 */
++	public boolean isValidAccessToken(String accessToken, String accessTokenSecret){
++		return get(accessToken, accessTokenSecret) != null;
++	}
++
++}
+diff --git a/src/main/java/net/sue445/azusaar/dto/json/UserInfoDto.java b/src/main/java/net/sue445/azusaar/dto/json/UserInfoDto.java
+new file mode 100644
+index 0000000..3d19769
+--- /dev/null
++++ b/src/main/java/net/sue445/azusaar/dto/json/UserInfoDto.java
+@@ -0,0 +1,21 @@
++package net.sue445.azusaar.dto.json;
++
++import net.arnx.jsonic.JSONHint;
++
++
++
++public class UserInfoDto {
++	public String screenName = "";
++
++	@JSONHint(ignore = true)
++	public String atndId = "";
++
++	@JSONHint(ignore = true)
++	public String eventAtndId = "";
++
++	public String zusaarId = "";
++
++	public String partakeId = "";
++
++	public String connpassId = "";
++}
+diff --git a/src/main/java/net/sue445/azusaar/enums/OAuthConsumerKey.java b/src/main/java/net/sue445/azusaar/enums/OAuthConsumerKey.java
+new file mode 100644
+index 0000000..7befaf8
+--- /dev/null
++++ b/src/main/java/net/sue445/azusaar/enums/OAuthConsumerKey.java
+@@ -0,0 +1,45 @@
++package net.sue445.azusaar.enums;
++
++import org.slim3.util.AppEngineUtil;
++
++/**
++ * Consumer KeyとConsumer Secretのペアを管理する列挙体
++ * @author sue445
++ *
++ */
++public enum OAuthConsumerKey {
++	/**
++	 * 開発環境用
++	 */
++	DEVELOPMENT("1DLP15qMhRakb9svitB0PA", "WqGJ3SL77s3Bk8XddJMJebUXFtdsZuBPgeXwcSRsl8"),
++
++	/**
++	 * 本番環境用
++	 */
++	PRODUCTION( "ez3X2tsu5wB8szXU8kL5qw", "4m3olY0e25ELhJPxrt48mIQ0fMhZ7UH6LeFhaVY"),
++	;
++
++
++	private OAuthConsumerKey(String consumerKey, String consumerSecret){
++		this.consumerKey = consumerKey;
++		this.consumerSecret = consumerSecret;
++	}
++
++	public final String consumerKey;
++
++	public final String consumerSecret;
++
++
++	/**
++	 * 開発環境か本番環境かで返却するKeyを振り分ける
++	 * @return
++	 */
++	public static OAuthConsumerKey getCurrentKey(){
++		if(AppEngineUtil.isProduction()){
++			return PRODUCTION;
++		}
++
++		return DEVELOPMENT;
++	}
++
++}
+diff --git a/src/main/java/net/sue445/azusaar/filter/TwitterOAuthFilter.java b/src/main/java/net/sue445/azusaar/filter/TwitterOAuthFilter.java
+new file mode 100644
+index 0000000..51f3bb4
+--- /dev/null
++++ b/src/main/java/net/sue445/azusaar/filter/TwitterOAuthFilter.java
+@@ -0,0 +1,64 @@
++package net.sue445.azusaar.filter;
++
++import java.io.IOException;
++
++import javax.servlet.Filter;
++import javax.servlet.FilterChain;
++import javax.servlet.FilterConfig;
++import javax.servlet.ServletException;
++import javax.servlet.ServletRequest;
++import javax.servlet.ServletResponse;
++import javax.servlet.http.HttpServletRequest;
++import javax.servlet.http.HttpServletResponse;
++
++import net.sue445.azusaar.dao.UserDao;
++import net.sue445.azusaar.model.UserModel;
++import net.sue445.azusaar.util.SessionUtil;
++import net.sue445.azusaar.util.SessionUtil.SessionKey;
++import net.sue445.azusaar.util.TwitterUtil;
++import twitter4j.Twitter;
++import twitter4j.TwitterException;
++import twitter4j.auth.RequestToken;
++
++public class TwitterOAuthFilter implements Filter{
++	private final UserDao userDao = new UserDao();
++
++
++	@Override
++	public void init(FilterConfig filterConfig) throws ServletException {
++	}
++
++	@Override
++	public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException {
++		doFilter((HttpServletRequest)request, (HttpServletResponse)response, chain);
++	}
++
++	public void doFilter(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws IOException, ServletException {
++		UserModel currentUser = userDao.getCurrentUser(request, response);
++
++		if(currentUser != null && currentUser.isValidTwitterAccount()){
++			// Twitterの認証が正常取得できたので処理を続行する
++			chain.doFilter(request, response);
++			return;
++		}
++
++		// Twitterのログインにリダイレクトする
++		try {
++			Twitter twitter = TwitterUtil.getTwitter();
++			RequestToken requestToken = twitter.getOAuthRequestToken();
++			String twitterLoginUrl = requestToken.getAuthenticationURL();
++			SessionUtil.put(request, SessionKey.REQUEST_TOKEN, requestToken);
++
++			response.sendRedirect(twitterLoginUrl);
++
++		} catch (TwitterException e) {
++			response.setStatus(e.getStatusCode());
++			throw new ServletException("can not auth twitter", e);
++		}
++	}
++
++	@Override
++	public void destroy() {
++	}
++
++}
+diff --git a/src/main/java/net/sue445/azusaar/model/UserModel.java b/src/main/java/net/sue445/azusaar/model/UserModel.java
+new file mode 100644
+index 0000000..a170a7b
+--- /dev/null
++++ b/src/main/java/net/sue445/azusaar/model/UserModel.java
+@@ -0,0 +1,308 @@
++package net.sue445.azusaar.model;
++
++import java.io.Serializable;
++import java.util.Date;
++
++import net.sue445.azusaar.dao.UserProxyDao;
++import net.sue445.azusaar.util.TwitterUtil;
++
++import org.slim3.datastore.Attribute;
++import org.slim3.datastore.CreationDate;
++import org.slim3.datastore.Datastore;
++import org.slim3.datastore.Model;
++import org.slim3.datastore.ModificationDate;
++import org.slim3.datastore.json.Json;
++
++import twitter4j.Twitter;
++
++import com.google.appengine.api.datastore.Key;
++
++@Model(kind = "User", schemaVersion = 1)
++public class UserModel implements Serializable {
++	private static final long serialVersionUID = 1L;
++
++	@Json(ignore = true)
++	@Attribute(primaryKey = true)
++	private Key key;
++
++	@Attribute(unindexed = true, version = true)
++	private Long version;
++
++	@Attribute(listener = CreationDate.class)
++	private Date createdAt;
++
++	@Attribute(listener = ModificationDate.class)
++	private Date updatedAt;
++
++	private String screenName;
++
++	@Attribute(unindexed = true)
++	private String atndId = "";
++
++	@Attribute(unindexed = true)
++	private String eventAtndId = "";
++
++	@Attribute(unindexed = true)
++	private String zusaarId = "";
++
++	@Attribute(unindexed = true)
++	private String partakeId = "";
++
++	@Attribute(unindexed = true)
++	private String connpassId = "";
++
++	private String accessToken;
++
++	private String accessTokenSecret;
++
++
++	public UserModel(){
++
++	}
++
++	public UserModel(long twitterUserId){
++		this.key = createKey(twitterUserId);
++	}
++
++	public static Key createKey(long twitterUserId){
++		return Datastore.createKey(UserModel.class, twitterUserId);
++	}
++
++	/**
++	 * Returns the key.
++	 *
++	 * @return the key
++	 */
++	public Key getKey() {
++		return key;
++	}
++
++	/**
++	 * Sets the key.
++	 *
++	 * @param key
++	 *            the key
++	 */
++	public void setKey(Key key) {
++		this.key = key;
++	}
++
++	/**
++	 * Returns the version.
++	 *
++	 * @return the version
++	 */
++	public Long getVersion() {
++		return version;
++	}
++
++	/**
++	 * Sets the version.
++	 *
++	 * @param version
++	 *            the version
++	 */
++	public void setVersion(Long version) {
++		this.version = version;
++	}
++
++	@Override
++	public int hashCode() {
++		final int prime = 31;
++		int result = 1;
++		result = prime * result + ((key == null) ? 0 : key.hashCode());
++		return result;
++	}
++
++	@Override
++	public boolean equals(Object obj) {
++		if (this == obj) {
++			return true;
++		}
++		if (obj == null) {
++			return false;
++		}
++		if (getClass() != obj.getClass()) {
++			return false;
++		}
++		UserModel other = (UserModel) obj;
++		if (key == null) {
++			if (other.key != null) {
++				return false;
++			}
++		} else if (!key.equals(other.key)) {
++			return false;
++		}
++		return true;
++	}
++
++	/**
++	 * @return the createdAt
++	 */
++	public Date getCreatedAt() {
++		return createdAt;
++	}
++
++	/**
++	 * @param createdAt the createdAt to set
++	 */
++	public void setCreatedAt(Date createdAt) {
++		this.createdAt = createdAt;
++	}
++
++	/**
++	 * @return the updatedAt
++	 */
++	public Date getUpdatedAt() {
++		return updatedAt;
++	}
++
++	/**
++	 * @param updatedAt the updatedAt to set
++	 */
++	public void setUpdatedAt(Date updatedAt) {
++		this.updatedAt = updatedAt;
++	}
++
++	/**
++	 * @return the atndId
++	 */
++	public String getAtndId() {
++		return atndId;
++	}
++
++	/**
++	 * @param atndId the atndId to set
++	 */
++	public void setAtndId(String atndId) {
++		this.atndId = atndId;
++	}
++
++	/**
++	 * @return the eventAtndId
++	 */
++	public String getEventAtndId() {
++		return eventAtndId;
++	}
++
++	/**
++	 * @param eventAtndId the eventAtndId to set
++	 */
++	public void setEventAtndId(String eventAtndId) {
++		this.eventAtndId = eventAtndId;
++	}
++
++	/**
++	 * @return the zusaarId
++	 */
++	public String getZusaarId() {
++		return zusaarId;
++	}
++
++	/**
++	 * @param zusaarId the zusaarId to set
++	 */
++	public void setZusaarId(String zusaarId) {
++		this.zusaarId = zusaarId;
++	}
++
++	/**
++	 * @return the partakeId
++	 */
++	public String getPartakeId() {
++		return partakeId;
++	}
++
++	/**
++	 * @param partakeId the partakeId to set
++	 */
++	public void setPartakeId(String partakeId) {
++		this.partakeId = partakeId;
++	}
++
++	/**
++	 * @return the connpassId
++	 */
++	public String getConnpassId() {
++		return connpassId;
++	}
++
++	/**
++	 * @param connpassId the connpassId to set
++	 */
++	public void setConnpassId(String connpassId) {
++		this.connpassId = connpassId;
++	}
++
++	/**
++	 * @return the accessToken
++	 */
++	public String getAccessToken() {
++		return accessToken;
++	}
++
++	/**
++	 * @param accessToken the accessToken to set
++	 */
++	public void setAccessToken(String accessToken) {
++		this.accessToken = accessToken;
++	}
++
++	/**
++	 * @return the accessTokenSecret
++	 */
++	public String getAccessTokenSecret() {
++		return accessTokenSecret;
++	}
++
++	/**
++	 * @param accessTokenSecret the accessTokenSecret to set
++	 */
++	public void setAccessTokenSecret(String accessTokenSecret) {
++		this.accessTokenSecret = accessTokenSecret;
++	}
++
++	/**
++	 * @return the screenName
++	 */
++	public String getScreenName() {
++		return screenName;
++	}
++
++	/**
++	 * @param screenName the screenName to set
++	 */
++	public void setScreenName(String screenName) {
++		this.screenName = screenName;
++	}
++
++	public long getTwitterUserId(){
++		return key.getId();
++	}
++
++	/**
++	 * Twitterアカウントが有効かどうか
++	 * @param userModel
++	 * @return
++	 */
++	public boolean isValidTwitterAccount() {
++		UserProxyDao userProxyDao = new UserProxyDao();
++		return userProxyDao.isValidAccessToken(accessToken, accessTokenSecret);
++	}
++
++	public String getZusaarUrl(){
++		return "http://www.zusaar.com/user/" + zusaarId;
++	}
++
++	public String getPartakeUrl(){
++		return "http://partake.in/users/" + partakeId;
++	}
++
++	public String getConnpassUrl(){
++		return "http://connpass.com/user/" + connpassId;
++	}
++
++	public Twitter getTwitter(){
++		return TwitterUtil.getTwitter(accessToken, accessTokenSecret);
++	}
++}
+diff --git a/src/main/java/net/sue445/azusaar/page/AbstractPage.java b/src/main/java/net/sue445/azusaar/page/AbstractPage.java
+new file mode 100644
+index 0000000..3c38921
+--- /dev/null
++++ b/src/main/java/net/sue445/azusaar/page/AbstractPage.java
+@@ -0,0 +1,43 @@
++package net.sue445.azusaar.page;
++
++import org.slim3.controller.ControllerConstants;
++import org.slim3.controller.Navigation;
++
++import scenic3.ScenicPage;
++
++public abstract class AbstractPage extends ScenicPage{
++	public abstract String getPageName();
++
++	public String getPagePath(){
++		return "/WEB-INF/view" + getPageName();
++	}
++
++	@Override
++	protected Navigation setUp() {
++		// f:urlでの基準パスを設定する
++		requestScope(ControllerConstants.BASE_PATH_KEY, getPageName());
++
++		return super.setUp();
++	}
++
++	/**
++	 * {@inheritDoc}
++	 * <p>
++	 * pathの先頭に "/WEB-INF/view&lt;page-name&gt;" を付加する
++	 * </p>
++	 */
++	@Override
++	protected Navigation forward(String path) {
++		return super.forward(getPagePath() + path);
++	}
++
++	@Override
++	protected String param(CharSequence name) throws NullPointerException {
++		String value = super.param(name);
++		if(value != null){
++			value = value.trim();
++		}
++		return value;
++	}
++
++}
+diff --git a/src/main/java/net/sue445/azusaar/page/HomePage.java b/src/main/java/net/sue445/azusaar/page/HomePage.java
+new file mode 100644
+index 0000000..5f18363
+--- /dev/null
++++ b/src/main/java/net/sue445/azusaar/page/HomePage.java
+@@ -0,0 +1,64 @@
++package net.sue445.azusaar.page;
++
++import net.sue445.azusaar.dao.UserDao;
++import net.sue445.azusaar.meta.UserModelMeta;
++import net.sue445.azusaar.model.UserModel;
++import net.sue445.common.logging.Jdk14LogFactory;
++import net.sue445.common.logging.Log;
++
++import org.slim3.controller.Navigation;
++
++import scenic3.annotation.ActionPath;
++import scenic3.annotation.Page;
++import twitter4j.Twitter;
++
++@Page("/home/")
++public class HomePage extends AbstractPage {
++	protected static final Log log = Jdk14LogFactory.getLogger(HomePage.class);
++
++	private UserModel currentUser;
++
++	@Override
++	protected Navigation setUp() {
++		UserDao userDao = new UserDao();
++		currentUser = userDao.getCurrentUser(request, response);
++		requestScope("user", currentUser);
++
++		return super.setUp();
++	}
++
++	@Override
++	public String getPageName() {
++		return "/home/";
++	}
++
++	@ActionPath("")
++	public Navigation index() {
++		return forward("index.jsp");
++	}
++
++	@ActionPath("edit")
++	public Navigation edit() {
++		return forward("edit.jsp");
++	}
++
++	@ActionPath("update")
++	public Navigation update() {
++		UserModelMeta e= UserModelMeta.get();
++		currentUser.setZusaarId(param(e.zusaarId));
++		currentUser.setPartakeId(param(e.partakeId));
++		currentUser.setConnpassId(param(e.connpassId));
++
++		try {
++			Twitter twitter = currentUser.getTwitter();
++			currentUser.setScreenName(twitter.getScreenName());
++		} catch (Exception ex) {
++			log.warn("can not update screenName", ex);
++		}
++
++		UserDao userDao = new UserDao();
++		userDao.put(currentUser);
++
++		return redirect("/home/");
++	}
++}
+diff --git a/src/main/java/net/sue445/azusaar/util/CookieUtil.java b/src/main/java/net/sue445/azusaar/util/CookieUtil.java
+new file mode 100644
+index 0000000..8bc4c0a
+--- /dev/null
++++ b/src/main/java/net/sue445/azusaar/util/CookieUtil.java
+@@ -0,0 +1,34 @@
++package net.sue445.azusaar.util;
++
++import javax.servlet.http.Cookie;
++
++import net.sue445.kulib.util.EmptyCheckUtil;
++
++public final class CookieUtil {
++	public static final String ACCESS_TOKEN = "accessToken";
++	public static final String ACCESS_TOKEN_SECRET = "accessTokenSecret";
++
++	private CookieUtil(){
++
++	}
++
++	/**
++	 *
++	 * @param cookies
++	 * @param name
++	 * @return if not found, return null
++	 */
++	public static String findValue(Cookie[] cookies, String name){
++		if(EmptyCheckUtil.isEmpty(cookies)){
++			return null;
++		}
++
++		for(Cookie cookie : cookies){
++			if(name.equals(cookie.getName())){
++				return cookie.getValue();
++			}
++		}
++
++		return null;
++	}
++}
+diff --git a/src/main/java/net/sue445/azusaar/util/SessionUtil.java b/src/main/java/net/sue445/azusaar/util/SessionUtil.java
+new file mode 100644
+index 0000000..f2d12eb
+--- /dev/null
++++ b/src/main/java/net/sue445/azusaar/util/SessionUtil.java
+@@ -0,0 +1,45 @@
++package net.sue445.azusaar.util;
++
++import javax.servlet.http.HttpServletRequest;
++
++public final class SessionUtil {
++	public enum SessionKey {
++		REQUEST_TOKEN,
++		ACCESS_TOKEN,
++	}
++
++	private SessionUtil(){
++
++	}
++
++	/**
++	 *
++	 * @param request
++	 * @param key
++	 * @param value
++	 */
++	public static void put(HttpServletRequest request, SessionKey key, Object value){
++		request.getSession().setAttribute(key.name(), value);
++	}
++
++	/**
++	 *
++	 * @param request
++	 * @param key
++	 * @return
++	 */
++	@SuppressWarnings("unchecked")
++	public static <T> T get(HttpServletRequest request, SessionKey key) {
++		return (T) request.getSession().getAttribute(key.name());
++	}
++
++	/**
++	 *
++	 * @param request
++	 * @param key
++	 */
++	public static void remove(HttpServletRequest request, SessionKey key) {
++		request.getSession().removeAttribute(key.name());
++	}
++
++}
+diff --git a/src/main/java/net/sue445/azusaar/util/TwitterUtil.java b/src/main/java/net/sue445/azusaar/util/TwitterUtil.java
+new file mode 100644
+index 0000000..6d3ad33
+--- /dev/null
++++ b/src/main/java/net/sue445/azusaar/util/TwitterUtil.java
+@@ -0,0 +1,102 @@
++package net.sue445.azusaar.util;
++
++import javax.servlet.http.HttpServletRequest;
++
++import net.sue445.azusaar.enums.OAuthConsumerKey;
++import net.sue445.azusaar.util.SessionUtil.SessionKey;
++import net.sue445.common.logging.Jdk14LogFactory;
++import net.sue445.common.logging.Log;
++
++import org.apache.commons.lang.StringUtils;
++
++import twitter4j.Twitter;
++import twitter4j.TwitterFactory;
++import twitter4j.auth.AccessToken;
++import twitter4j.conf.Configuration;
++import twitter4j.conf.ConfigurationBuilder;
++
++public final class TwitterUtil {
++	private static final Log log = Jdk14LogFactory.getLogger(TwitterUtil.class);
++
++	private TwitterUtil(){
++
++	}
++
++	/**
++	 * @param accessToken
++	 * @param accessTokenSecret
++	 * @return
++	 */
++	public static Twitter getTwitter(String accessToken, String accessTokenSecret){
++		TwitterFactory twitterFactory = getTwitterFactory();
++		return twitterFactory.getInstance(new AccessToken(accessToken, accessTokenSecret));
++	}
++
++	/**
++	 *
++	 * @return
++	 */
++	private static TwitterFactory getTwitterFactory() {
++		OAuthConsumerKey consumerKey = OAuthConsumerKey.getCurrentKey();
++
++		ConfigurationBuilder builder = new ConfigurationBuilder();
++		builder.setOAuthConsumerKey(consumerKey.consumerKey);
++		builder.setOAuthConsumerSecret(consumerKey.consumerSecret);
++		builder.setUseSSL(true);
++		builder.setGZIPEnabled(false);
++
++		Configuration conf = builder.build();
++		TwitterFactory twitterFactory = new TwitterFactory(conf);
++		return twitterFactory;
++	}
++
++	/**
++	 * @return
++	 */
++	public static Twitter getTwitter(){
++		TwitterFactory twitterFactory = getTwitterFactory();
++		return twitterFactory.getInstance();
++	}
++
++	/**
++	 * アクセストークンが有効かどうか（書式だけチェックしてAPIはコールしない）
++	 * @param accessToken
++	 * @param accessTokenSecret
++	 * @return
++	 */
++	public static boolean isAccessTokenValid(String accessToken, String accessTokenSecret){
++		if(StringUtils.isEmpty(accessToken) || StringUtils.isEmpty(accessTokenSecret)){
++			return false;
++		}
++
++		try {
++			Twitter twitter = getTwitter(accessToken, accessTokenSecret);
++			twitter.verifyCredentials();
++			return true;
++		} catch (Exception e) {
++			log.warn("can not verifyCredentials", e);
++		}
++		return false;
++	}
++
++	/**
++	 * cookieかsessionのtokenが有効かどうか調べる
++	 * @param request
++	 * @return
++	 */
++	public static boolean isAccessTokenValid(HttpServletRequest request){
++		String accessToken = CookieUtil.findValue(request.getCookies(), CookieUtil.ACCESS_TOKEN);
++		String accessTokenSecret = CookieUtil.findValue(request.getCookies(), CookieUtil.ACCESS_TOKEN_SECRET);
++
++		if(isAccessTokenValid(accessToken, accessTokenSecret)){
++			return true;
++		}
++
++		AccessToken sessionAccessToken = SessionUtil.get(request, SessionKey.ACCESS_TOKEN);
++		if(sessionAccessToken != null && isAccessTokenValid(sessionAccessToken.getToken(), sessionAccessToken.getTokenSecret())){
++			return true;
++		}
++
++		return false;
++	}
++}
+diff --git a/src/test/java/net/sue445/azusaar/controller/admin/EnvironmentControllerTest.java b/src/test/java/net/sue445/azusaar/controller/admin/EnvironmentControllerTest.java
+index 5f389c7..6492961 100644
+--- a/src/test/java/net/sue445/azusaar/controller/admin/EnvironmentControllerTest.java
++++ b/src/test/java/net/sue445/azusaar/controller/admin/EnvironmentControllerTest.java
+@@ -24,2 +23,0 @@ public class EnvironmentControllerTest extends AbstractControllerTestCase {
+-		//System.out.println(getResponse());
+-
+diff --git a/src/test/java/net/sue445/azusaar/controller/admin/kokucheese/DetailControllerTest.java b/src/test/java/net/sue445/azusaar/controller/admin/kokucheese/DetailControllerTest.java
+index 3073d9f..bb9bf91 100644
+--- a/src/test/java/net/sue445/azusaar/controller/admin/kokucheese/DetailControllerTest.java
++++ b/src/test/java/net/sue445/azusaar/controller/admin/kokucheese/DetailControllerTest.java
+@@ -3,5 +3,2 @@ package net.sue445.azusaar.controller.admin.kokucheese;
+-import static org.hamcrest.CoreMatchers.is;
+-import static org.hamcrest.CoreMatchers.notNullValue;
+-import static org.hamcrest.CoreMatchers.nullValue;
+-import static org.hamcrest.Matchers.containsString;
+-import static org.junit.Assert.assertThat;
++import static org.hamcrest.Matchers.*;
++import static org.junit.Assert.*;
+@@ -37 +33,0 @@ public class DetailControllerTest extends AbstractControllerTestCase {
+-		System.out.println(actual);
+diff --git a/src/test/java/net/sue445/azusaar/controller/admin/kokucheese/ListControllerTest.java b/src/test/java/net/sue445/azusaar/controller/admin/kokucheese/ListControllerTest.java
+index 8a58fa0..415eddc 100644
+--- a/src/test/java/net/sue445/azusaar/controller/admin/kokucheese/ListControllerTest.java
++++ b/src/test/java/net/sue445/azusaar/controller/admin/kokucheese/ListControllerTest.java
+@@ -3,5 +3,2 @@ package net.sue445.azusaar.controller.admin.kokucheese;
+-import static org.hamcrest.CoreMatchers.containsString;
+-import static org.hamcrest.CoreMatchers.is;
+-import static org.hamcrest.CoreMatchers.notNullValue;
+-import static org.hamcrest.CoreMatchers.nullValue;
+-import static org.junit.Assert.assertThat;
++import static org.hamcrest.CoreMatchers.*;
++import static org.junit.Assert.*;
+@@ -34 +30,0 @@ public class ListControllerTest extends AbstractControllerTestCase {
+-		System.out.println(actual);
+diff --git a/src/test/java/net/sue445/azusaar/controller/api/JalanControllerTest.java b/src/test/java/net/sue445/azusaar/controller/api/JalanControllerTest.java
+index 5b34b5b..0770a42 100644
+--- a/src/test/java/net/sue445/azusaar/controller/api/JalanControllerTest.java
++++ b/src/test/java/net/sue445/azusaar/controller/api/JalanControllerTest.java
+@@ -24 +23,0 @@ public class JalanControllerTest extends AbstractControllerTestCase {
+-		System.out.println(content);
+diff --git a/src/test/java/net/sue445/azusaar/controller/api/KokucheeseControllerTest.java b/src/test/java/net/sue445/azusaar/controller/api/KokucheeseControllerTest.java
+index e0eaabe..770ddc0 100644
+--- a/src/test/java/net/sue445/azusaar/controller/api/KokucheeseControllerTest.java
++++ b/src/test/java/net/sue445/azusaar/controller/api/KokucheeseControllerTest.java
+@@ -31 +30,0 @@ public class KokucheeseControllerTest extends AbstractControllerTestCase {
+-		//System.out.println(getResponse());
+diff --git a/src/test/java/net/sue445/azusaar/controller/api/PartakeControllerTest.java b/src/test/java/net/sue445/azusaar/controller/api/PartakeControllerTest.java
+index ae1c482..589a422 100644
+--- a/src/test/java/net/sue445/azusaar/controller/api/PartakeControllerTest.java
++++ b/src/test/java/net/sue445/azusaar/controller/api/PartakeControllerTest.java
+@@ -31 +30,0 @@ public class PartakeControllerTest extends AbstractControllerTestCase {
+-		//System.out.println(getResponse());
+@@ -77 +75,0 @@ public class PartakeControllerTest extends AbstractControllerTestCase {
+-		//System.out.println(getResponse());
+diff --git a/src/test/java/net/sue445/azusaar/controller/api/ZusaarControllerTest.java b/src/test/java/net/sue445/azusaar/controller/api/ZusaarControllerTest.java
+index d385925..a8d819a 100644
+--- a/src/test/java/net/sue445/azusaar/controller/api/ZusaarControllerTest.java
++++ b/src/test/java/net/sue445/azusaar/controller/api/ZusaarControllerTest.java
+@@ -60 +59,0 @@ public class ZusaarControllerTest extends AbstractControllerTestCase {
+-		//System.out.println(getResponse());
+diff --git a/src/test/java/net/sue445/azusaar/controller/auth/CallbackControllerTest.java b/src/test/java/net/sue445/azusaar/controller/auth/CallbackControllerTest.java
+new file mode 100644
+index 0000000..73d42b0
+--- /dev/null
++++ b/src/test/java/net/sue445/azusaar/controller/auth/CallbackControllerTest.java
+@@ -0,0 +1,73 @@
++package net.sue445.azusaar.controller.auth;
++
++import static org.hamcrest.CoreMatchers.*;
++import static org.junit.Assert.*;
++import net.sue445.azusaar.model.UserModel;
++import net.sue445.azusaar.util.TestUtil;
++
++import org.junit.Before;
++import org.junit.Test;
++import org.junit.experimental.runners.Enclosed;
++import org.junit.runner.RunWith;
++import org.slim3.tester.ControllerTestCase;
++
++import twitter4j.auth.AccessToken;
++
++@RunWith(Enclosed.class)
++public class CallbackControllerTest{
++	public static class WhenUserNotRegisted  extends ControllerTestCase {
++		@Before
++		public void setUpMock() {
++			CallbackController.mockAccessToken = new MockAccessToken();
++		}
++
++		@Test
++		public void run() throws Exception {
++			tester.param("oauth_verifier", "aaaaaaaaaaa");
++			tester.start("/auth/callback");
++			CallbackController controller = tester.getController();
++
++			assertThat(controller, is(notNullValue()));
++			assertThat(tester.isRedirect(), is(true));
++			assertThat(tester.getDestinationPath(), is("/home/"));
++			assertThat(tester.count(UserModel.class), is(1));
++		}
++	}
++
++	public static class WhenUserRegisted  extends ControllerTestCase {
++		@Before
++		public void setUpMock() {
++			CallbackController.mockAccessToken = new MockAccessToken();
++			TestUtil.setUpUserModel();
++		}
++
++		@Test
++		public void run() throws Exception {
++			tester.param("oauth_verifier", "aaaaaaaaaaa");
++			tester.start("/auth/callback");
++			CallbackController controller = tester.getController();
++
++			assertThat(controller, is(notNullValue()));
++			assertThat(tester.isRedirect(), is(true));
++			assertThat(tester.getDestinationPath(), is("/"));
++			assertThat(tester.count(UserModel.class), is(1));
++		}
++	}
++
++	@SuppressWarnings("serial")
++	private static class MockAccessToken extends AccessToken{
++		public MockAccessToken(){
++			super(TestUtil.ACCESS_TOKEN, TestUtil.ACCESS_TOKEN_SECRET);
++		}
++
++		@Override
++		public String getScreenName() {
++			return TestUtil.SCREEN_NAME;
++		}
++
++		@Override
++		public long getUserId() {
++			return TestUtil.TWITTER_USER_ID;
++		}
++	}
++}
+diff --git a/src/test/java/net/sue445/azusaar/controller/auth/LogoutControllerTest.java b/src/test/java/net/sue445/azusaar/controller/auth/LogoutControllerTest.java
+new file mode 100644
+index 0000000..73ac1e9
+--- /dev/null
++++ b/src/test/java/net/sue445/azusaar/controller/auth/LogoutControllerTest.java
+@@ -0,0 +1,56 @@
++package net.sue445.azusaar.controller.auth;
++
++import static org.hamcrest.CoreMatchers.*;
++import static org.junit.Assert.*;
++
++import javax.servlet.http.Cookie;
++
++import net.sue445.azusaar.model.UserModel;
++import net.sue445.azusaar.util.CookieUtil;
++import net.sue445.azusaar.util.SessionUtil;
++import net.sue445.azusaar.util.SessionUtil.SessionKey;
++import net.sue445.azusaar.util.TestUtil;
++
++import org.junit.Before;
++import org.junit.Test;
++import org.slim3.datastore.Datastore;
++import org.slim3.tester.ControllerTestCase;
++
++import twitter4j.auth.AccessToken;
++
++import com.google.appengine.api.datastore.Key;
++
++public class LogoutControllerTest extends ControllerTestCase {
++	@Before
++	public void before() {
++		TestUtil.setUpUserModel();
++		SessionUtil.put(tester.request, SessionKey.ACCESS_TOKEN, TestUtil.getMockAccessToken());
++		tester.request.addCookie(new Cookie(CookieUtil.ACCESS_TOKEN, TestUtil.ACCESS_TOKEN));
++		tester.request.addCookie(new Cookie(CookieUtil.ACCESS_TOKEN_SECRET, TestUtil.ACCESS_TOKEN_SECRET));
++	}
++
++	@Test
++	public void run() throws Exception {
++		tester.start("/auth/logout");
++		LogoutController controller = tester.getController();
++		assertThat(controller, is(notNullValue()));
++		assertThat(tester.isRedirect(), is(true));
++		assertThat(tester.getDestinationPath(), is("/"));
++
++		Key userKey = UserModel.createKey(TestUtil.TWITTER_USER_ID);
++		UserModel actualUser = Datastore.get(UserModel.class, userKey);
++		assertThat(actualUser.getAccessToken(), is(nullValue()));
++		assertThat(actualUser.getAccessTokenSecret(), is(nullValue()));
++
++		AccessToken actualSession = SessionUtil.get(tester.request, SessionKey.ACCESS_TOKEN);
++		assertThat(actualSession, is(nullValue()));
++
++		Cookie[] actualCookies = tester.response.getCookies();
++
++		assertThat(actualCookies.length, is(2));
++		assertThat(actualCookies[0].getName(), is(CookieUtil.ACCESS_TOKEN));
++		assertThat(actualCookies[0].getMaxAge(), is(0));
++		assertThat(actualCookies[1].getName(), is(CookieUtil.ACCESS_TOKEN_SECRET));
++		assertThat(actualCookies[1].getMaxAge(), is(0));
++	}
++}
+diff --git a/src/test/java/net/sue445/azusaar/controller/auth/UserInfoControllerTest.java b/src/test/java/net/sue445/azusaar/controller/auth/UserInfoControllerTest.java
+new file mode 100644
+index 0000000..34f6a11
+--- /dev/null
++++ b/src/test/java/net/sue445/azusaar/controller/auth/UserInfoControllerTest.java
+@@ -0,0 +1,92 @@
++package net.sue445.azusaar.controller.auth;
++
++import static org.hamcrest.CoreMatchers.*;
++import static org.junit.Assert.*;
++
++import java.io.IOException;
++
++import javax.servlet.ServletException;
++import javax.servlet.http.Cookie;
++
++import net.sue445.azusaar.util.CookieUtil;
++import net.sue445.azusaar.util.SessionUtil;
++import net.sue445.azusaar.util.SessionUtil.SessionKey;
++import net.sue445.azusaar.util.TestUtil;
++import net.sue445.s3tiger.rules.ControllerResource;
++
++import org.junit.Before;
++import org.junit.Rule;
++import org.junit.Test;
++import org.junit.experimental.runners.Enclosed;
++import org.junit.runner.RunWith;
++import org.slim3.tester.ControllerTester;
++
++@RunWith(Enclosed.class)
++public class UserInfoControllerTest {
++	public static class WhenNotLogined{
++		@Rule
++		public ControllerResource controllerResource = new ControllerResource(UserInfoControllerTest.class);
++
++		private ControllerTester tester;
++
++		@Before
++		public void setUp() throws Exception {
++			tester = controllerResource.tester;
++			TestUtil.setUpUserModel();
++		}
++
++		@Test
++		public void run() throws Exception {
++			runController(tester);
++
++			String actual = tester.response.getOutputAsString();
++
++			assertThat(actual, not(containsString("atndId")));
++			assertThat(actual, not(containsString("zusaarId")));
++			assertThat(actual, not(containsString("eventAtndId")));
++			assertThat(actual, not(containsString("partakeId")));
++			assertThat(actual, not(containsString("connpassId")));
++		}
++	}
++
++	public static class WhenHasSession {
++		@Rule
++		public ControllerResource controllerResource = new ControllerResource(UserInfoControllerTest.class);
++
++		private ControllerTester tester;
++
++		@Before
++		public void setUp() throws Exception {
++			tester = controllerResource.tester;
++			TestUtil.setUpUserModel();
++			SessionUtil.put(tester.request, SessionKey.ACCESS_TOKEN, TestUtil.getMockAccessToken());
++		}
++
++		@Test
++		public void run() throws Exception {
++			runController(tester);
++
++			String actual = tester.response.getOutputAsString();
++			assertThat(actual, containsString("screenName"));
++//			assertThat(actual, containsString("atndId"));
++			assertThat(actual, containsString("zusaarId"));
++//			assertThat(actual, containsString("eventAtndId"));
++			assertThat(actual, containsString("partakeId"));
++			assertThat(actual, containsString("connpassId"));
++
++			Cookie[] cookies = tester.response.getCookies();
++			assertThat(cookies[0].getName(), is(CookieUtil.ACCESS_TOKEN));
++			assertThat(cookies[0].getValue(), is(TestUtil.ACCESS_TOKEN));
++			assertThat(cookies[1].getName(), is(CookieUtil.ACCESS_TOKEN_SECRET));
++			assertThat(cookies[1].getValue(), is(TestUtil.ACCESS_TOKEN_SECRET));
++		}
++	}
++
++	private static void runController(ControllerTester tester) throws IOException, ServletException {
++		tester.start("/auth/userInfo");
++		UserInfoController controller = tester.getController();
++		assertThat(controller, is(notNullValue()));
++		assertThat(tester.isRedirect(), is(false));
++		assertThat(tester.getDestinationPath(), is(nullValue()));
++	}
++}
+diff --git a/src/test/java/net/sue445/azusaar/dao/UserDaoTest.java b/src/test/java/net/sue445/azusaar/dao/UserDaoTest.java
+new file mode 100644
+index 0000000..be4e88a
+--- /dev/null
++++ b/src/test/java/net/sue445/azusaar/dao/UserDaoTest.java
+@@ -0,0 +1,145 @@
++package net.sue445.azusaar.dao;
++
++import static org.hamcrest.CoreMatchers.*;
++import static org.junit.Assert.*;
++
++import javax.servlet.http.Cookie;
++
++import net.sue445.azusaar.model.UserModel;
++import net.sue445.azusaar.util.CookieUtil;
++import net.sue445.azusaar.util.SessionUtil;
++import net.sue445.azusaar.util.SessionUtil.SessionKey;
++import net.sue445.azusaar.util.TestUtil;
++
++import org.junit.Before;
++import org.junit.Test;
++import org.junit.experimental.runners.Enclosed;
++import org.junit.runner.RunWith;
++import org.slim3.tester.AppEngineTestCase;
++import org.slim3.tester.ControllerTestCase;
++
++@RunWith(Enclosed.class)
++public class UserDaoTest {
++
++
++	public static class WhenExistsUser extends AppEngineTestCase {
++		private UserDao dao = new UserDao();
++
++		@Before
++		public void before(){
++			TestUtil.setUpUserModel();
++		}
++
++		@Test
++		public void getOrNull() throws Exception {
++			UserModel actual = dao.getOrNull(TestUtil.TWITTER_USER_ID);
++
++			assertThat(actual, is(notNullValue()));
++			assertThat(actual.getTwitterUserId(), is(TestUtil.TWITTER_USER_ID));
++		}
++
++		@Test
++		public void findByOAuth() throws Exception {
++			UserModel actual = dao.findByOAuth(TestUtil.ACCESS_TOKEN, TestUtil.ACCESS_TOKEN_SECRET);
++			assertThat(actual, is(notNullValue()));
++			assertThat(actual.getTwitterUserId(), is(TestUtil.TWITTER_USER_ID));
++		}
++
++		@Test
++		public void getOrNew_Get() throws Exception {
++			UserModel actual = dao.getOrNew(TestUtil.TWITTER_USER_ID);
++
++			assertThat(actual, is(notNullValue()));
++			assertThat(actual.getKey().getId(), is(TestUtil.TWITTER_USER_ID));
++			assertThat(actual.getVersion(), is(1L));
++		}
++	}
++
++	public static class WhenNotExistsUser extends AppEngineTestCase {
++		private UserDao dao = new UserDao();
++
++		@Test
++		public void getOrNull() throws Exception {
++			UserModel actual = dao.getOrNull(TestUtil.TWITTER_USER_ID);
++
++			assertThat(actual, is(nullValue()));
++		}
++
++		@Test
++		public void findByOAuth() throws Exception {
++			UserModel actual = dao.findByOAuth(TestUtil.ACCESS_TOKEN, TestUtil.ACCESS_TOKEN_SECRET);
++			assertThat(actual, is(nullValue()));
++		}
++
++		@Test
++		public void getOrNew_New() throws Exception {
++			UserModel actual = dao.getOrNew(TestUtil.TWITTER_USER_ID);
++
++			assertThat(actual.getVersion(), is(nullValue()));
++		}
++
++	}
++
++	public static class WhenHasCookie extends ControllerTestCase {
++		private UserDao dao = new UserDao();
++
++		@Before
++		public void before() {
++			TestUtil.setUpUserModel();
++			tester.request.addCookie(new Cookie(CookieUtil.ACCESS_TOKEN, TestUtil.ACCESS_TOKEN));
++			tester.request.addCookie(new Cookie(CookieUtil.ACCESS_TOKEN_SECRET, TestUtil.ACCESS_TOKEN_SECRET));
++		}
++
++		@Test
++		public void getCurrentUser() throws Exception {
++			UserModel actual = dao.getCurrentUser(tester.request, tester.response);
++
++			assertThat(actual, is(notNullValue()));
++			assertThat(actual.getKey().getId(), is(TestUtil.TWITTER_USER_ID));
++		}
++	}
++
++	public static class WhenHasSession extends ControllerTestCase {
++		private UserDao dao = new UserDao();
++
++		@Before
++		public void before() {
++			TestUtil.setUpUserModel();
++			SessionUtil.put(tester.request, SessionKey.ACCESS_TOKEN, TestUtil.getMockAccessToken());
++		}
++
++		@Test
++		public void getCurrentUser() throws Exception {
++			UserModel actual = dao.getCurrentUser(tester.request, tester.response);
++
++			assertThat(actual, is(notNullValue()));
++			assertThat(actual.getKey().getId(), is(TestUtil.TWITTER_USER_ID));
++
++			Cookie[] cookies = tester.response.getCookies();
++			assertThat(cookies[0].getName(), is(CookieUtil.ACCESS_TOKEN));
++			assertThat(cookies[0].getValue(), is(TestUtil.ACCESS_TOKEN));
++			assertThat(cookies[1].getName(), is(CookieUtil.ACCESS_TOKEN_SECRET));
++			assertThat(cookies[1].getValue(), is(TestUtil.ACCESS_TOKEN_SECRET));
++		}
++	}
++
++	public static class WhenHasParam extends ControllerTestCase {
++		private UserDao dao = new UserDao();
++
++		@Before
++		public void before() {
++			TestUtil.setUpUserModel();
++			tester.param(CookieUtil.ACCESS_TOKEN, TestUtil.ACCESS_TOKEN);
++			tester.param(CookieUtil.ACCESS_TOKEN_SECRET, TestUtil.ACCESS_TOKEN_SECRET);
++		}
++
++		@Test
++		public void getCurrentUser() throws Exception {
++			UserModel actual = dao.getCurrentUser(tester.request, tester.response);
++
++			assertThat(actual, is(notNullValue()));
++			assertThat(actual.getKey().getId(), is(TestUtil.TWITTER_USER_ID));
++		}
++	}
++
++}
+diff --git a/src/test/java/net/sue445/azusaar/dao/UserProxyDaoTest.java b/src/test/java/net/sue445/azusaar/dao/UserProxyDaoTest.java
+new file mode 100644
+index 0000000..73436f2
+--- /dev/null
++++ b/src/test/java/net/sue445/azusaar/dao/UserProxyDaoTest.java
+@@ -0,0 +1,54 @@
++package net.sue445.azusaar.dao;
++
++import static org.hamcrest.Matchers.*;
++import static org.junit.Assert.*;
++import net.sue445.azusaar.util.TestUtil;
++
++import org.junit.Before;
++import org.junit.Test;
++import org.junit.experimental.runners.Enclosed;
++import org.junit.runner.RunWith;
++import org.slim3.tester.AppEngineTestCase;
++
++import com.google.appengine.api.datastore.Key;
++
++
++@RunWith(Enclosed.class)
++public class UserProxyDaoTest {
++
++	public static class WhenNoneMemcache extends AppEngineTestCase{
++		private UserProxyDao dao = new UserProxyDao();
++
++		@Before
++		public void before() {
++			TestUtil.setUpUserModel();
++		}
++
++		@Test
++		public void get() throws Exception {
++			Key actual = dao.get(TestUtil.ACCESS_TOKEN, TestUtil.ACCESS_TOKEN_SECRET);
++
++			assertThat(actual, is(notNullValue()));
++			assertThat(actual.getId(), is(TestUtil.TWITTER_USER_ID));
++			assertThat(dao.wasMemcacheResponse, is(false));
++		}
++	}
++
++	public static class WhenExistsMemcache extends AppEngineTestCase{
++		private UserProxyDao dao = new UserProxyDao();
++
++		@Before
++		public void before() {
++			TestUtil.setUpUserModel();
++			dao.get(TestUtil.ACCESS_TOKEN, TestUtil.ACCESS_TOKEN_SECRET);
++		}
++
++		@Test
++		public void get() throws Exception {
++			Key actual = dao.get(TestUtil.ACCESS_TOKEN, TestUtil.ACCESS_TOKEN_SECRET);
++
++			assertThat(actual, is(notNullValue()));
++			assertThat(actual.getId(), is(TestUtil.TWITTER_USER_ID));
++		}
++	}
++}
+diff --git a/src/test/java/net/sue445/azusaar/filter/TwitterOAuthFilterTest.java b/src/test/java/net/sue445/azusaar/filter/TwitterOAuthFilterTest.java
+new file mode 100644
+index 0000000..5f42fa4
+--- /dev/null
++++ b/src/test/java/net/sue445/azusaar/filter/TwitterOAuthFilterTest.java
+@@ -0,0 +1,89 @@
++package net.sue445.azusaar.filter;
++
++import static org.hamcrest.Matchers.*;
++import static org.junit.Assert.*;
++
++import java.io.IOException;
++
++import javax.servlet.FilterChain;
++import javax.servlet.ServletException;
++import javax.servlet.ServletRequest;
++import javax.servlet.ServletResponse;
++import javax.servlet.http.Cookie;
++
++import net.sue445.azusaar.model.UserModel;
++import net.sue445.azusaar.util.TestUtil;
++
++import org.junit.Test;
++import org.junit.experimental.runners.Enclosed;
++import org.junit.runner.RunWith;
++import org.slim3.datastore.Datastore;
++import org.slim3.tester.ControllerTestCase;
++
++
++@RunWith(Enclosed.class)
++public class TwitterOAuthFilterTest{
++
++	public static class WhenNotExistsCookie extends ControllerTestCase {
++		private TwitterOAuthFilter filter = new TwitterOAuthFilter();
++
++		@Test
++		public void doFilter() throws Exception{
++			// cookieがない時はTwitterのログイン画面にリダイレクトされる
++			filter.doFilter(tester.request, tester.response, tester.filterChain);
++
++			String actual = tester.response.getRedirectPath();
++			assertThat(actual, startsWith("http://api.twitter.com/oauth/authenticate?oauth_token="));
++		}
++
++	}
++
++	public static class WhenExistsCookie extends ControllerTestCase {
++		private TwitterOAuthFilter filter = new TwitterOAuthFilter();
++
++		private MockFilterChain mockFilterChain = new MockFilterChain();
++
++
++		private void setUpOAuth(String accessToken, String accessTokenSecret) {
++			tester.request.addCookie(new Cookie("accessToken", accessToken));
++			tester.request.addCookie(new Cookie("accessTokenSecret", accessTokenSecret));
++
++			UserModel model = new UserModel(1);
++			model.setAccessToken(accessToken);
++			model.setAccessTokenSecret(accessTokenSecret);
++			Datastore.put(model);
++		}
++
++		@Test
++		public void doFilter_Success() throws Exception{
++			setUpOAuth(TestUtil.ACCESS_TOKEN, TestUtil.ACCESS_TOKEN_SECRET);
++
++			filter.doFilter(tester.request, tester.response, mockFilterChain);
++
++			assertThat(mockFilterChain.called, is(true));
++		}
++
++		// OAuthでエラーになったらログインにとばす
++		@Test
++		public void doFilter_Failed() throws Exception{
++			// secretの最後1文字だけ違う
++			setUpOAuth(TestUtil.ACCESS_TOKEN, "JOChFP1uXcnLO6cPN2kSLzbZg64qVJBYjxHVTUVn");
++
++			filter.doFilter(tester.request, tester.response, mockFilterChain);
++
++			assertThat(mockFilterChain.called, is(false));
++
++			String actual = tester.response.getRedirectPath();
++			assertThat(actual, startsWith("http://api.twitter.com/oauth/authenticate?oauth_token="));
++		}
++	}
++
++	private static class MockFilterChain implements FilterChain{
++		public boolean called = false;
++
++		@Override
++		public void doFilter(ServletRequest request, ServletResponse response) throws IOException, ServletException {
++			called = true;
++		}
++	}
++}
+diff --git a/src/test/java/net/sue445/azusaar/model/UserModelTest.java b/src/test/java/net/sue445/azusaar/model/UserModelTest.java
+new file mode 100644
+index 0000000..1a71227
+--- /dev/null
++++ b/src/test/java/net/sue445/azusaar/model/UserModelTest.java
+@@ -0,0 +1,52 @@
++package net.sue445.azusaar.model;
++
++import static org.hamcrest.CoreMatchers.*;
++import static org.junit.Assert.*;
++import net.sue445.azusaar.util.TestUtil;
++
++import org.junit.Test;
++import org.slim3.datastore.Datastore;
++import org.slim3.tester.AppEngineTestCase;
++
++import com.google.appengine.api.datastore.Key;
++
++public class UserModelTest extends AppEngineTestCase {
++
++	private UserModel model = new UserModel();
++
++	@Test
++	public void test() throws Exception {
++		assertThat(model, is(notNullValue()));
++	}
++
++	@Test
++	public void createKey() throws Exception {
++		long twitterUserId = 1;
++
++		Key actual = UserModel.createKey(twitterUserId);
++
++		assertThat(actual.getId(), is(twitterUserId));
++	}
++
++	@Test
++	public void isValidTwitterAccount_OK() throws Exception {
++		model.setAccessToken(TestUtil.ACCESS_TOKEN);
++		model.setAccessTokenSecret(TestUtil.ACCESS_TOKEN_SECRET);
++		Datastore.put(model);
++
++		boolean actual = model.isValidTwitterAccount();
++		assertThat(actual, is(true));
++	}
++
++	@Test
++	public void isValidTwitterAccount_NG() throws Exception {
++		model.setAccessToken(TestUtil.ACCESS_TOKEN);
++
++		// 最後1文字だけ違う
++		model.setAccessTokenSecret("JOChFP1uXcnLO6cPN2kSLzbZg64qVJBYjxHVTUVm");
++		Datastore.put(model);
++
++		boolean actual = model.isValidTwitterAccount();
++		assertThat(actual, is(false));
++	}
++}
+diff --git a/src/test/java/net/sue445/azusaar/page/AbstractPageTest.java b/src/test/java/net/sue445/azusaar/page/AbstractPageTest.java
+new file mode 100644
+index 0000000..e3eb787
+--- /dev/null
++++ b/src/test/java/net/sue445/azusaar/page/AbstractPageTest.java
+@@ -0,0 +1,28 @@
++package net.sue445.azusaar.page;
++
++import static org.hamcrest.Matchers.*;
++import static org.junit.Assert.*;
++
++import java.io.IOException;
++
++import javax.servlet.ServletException;
++
++import scenic3.ScenicPage;
++import scenic3.UrlsImpl;
++import scenic3.tester.PageTestCase;
++
++public abstract class AbstractPageTest extends PageTestCase{
++
++	protected AbstractPageTest(Class<? extends UrlsImpl> appUrlClass, Class<? extends ScenicPage> pageClass){
++		super(appUrlClass, pageClass);
++	}
++
++	protected AbstractPage startPage(String path) throws IOException, ServletException {
++		tester.start(path);
++
++		AbstractPage page = (AbstractPage) tester.getPage();
++		assertThat(page, is(notNullValue()));
++
++		return page;
++	}
++}
+diff --git a/src/test/java/net/sue445/azusaar/page/HomePageTest.java b/src/test/java/net/sue445/azusaar/page/HomePageTest.java
+new file mode 100644
+index 0000000..09c29fc
+--- /dev/null
++++ b/src/test/java/net/sue445/azusaar/page/HomePageTest.java
+@@ -0,0 +1,72 @@
++package net.sue445.azusaar.page;
++
++import static org.hamcrest.Matchers.*;
++import static org.junit.Assert.*;
++
++import javax.servlet.http.Cookie;
++
++import net.sue445.azusaar.controller.AppUrls;
++import net.sue445.azusaar.meta.UserModelMeta;
++import net.sue445.azusaar.model.UserModel;
++import net.sue445.azusaar.util.CookieUtil;
++import net.sue445.azusaar.util.TestUtil;
++
++import org.junit.Before;
++import org.junit.Test;
++import org.slim3.datastore.Datastore;
++
++public class HomePageTest extends AbstractPageTest{
++
++	public HomePageTest(){
++		super(AppUrls.class, HomePage.class);
++	}
++
++	@Before
++	public void before() {
++		TestUtil.setUpUserModel();
++		tester.request.addCookie(new Cookie(CookieUtil.ACCESS_TOKEN, TestUtil.ACCESS_TOKEN));
++		tester.request.addCookie(new Cookie(CookieUtil.ACCESS_TOKEN_SECRET, TestUtil.ACCESS_TOKEN_SECRET));
++	}
++
++	@Test
++	public void index() throws Exception{
++		AbstractPage page = startPage("/home/");
++
++		assertThat(tester.getActionMethodName(), is("index"));
++		assertThat(tester.getDestinationPath(), is(page.getPagePath() + "index.jsp"));
++		assertThat(tester.isRedirect(), is(false));
++	}
++
++	@Test
++	public void edit() throws Exception{
++		AbstractPage page = startPage("/home/edit");
++
++		assertThat(tester.getActionMethodName(), is("edit"));
++		assertThat(tester.getDestinationPath(), is(page.getPagePath() + "edit.jsp"));
++		assertThat(tester.isRedirect(), is(false));
++	}
++
++	@Test
++	public void update() throws Exception {
++		UserModelMeta e= UserModelMeta.get();
++		String zusaarId = "zusaarId";
++		String partakeId = "partakeId";
++		String connpassId = "connpassId";
++
++		tester.param(e.zusaarId, zusaarId);
++		tester.param(e.partakeId, partakeId);
++		tester.param(e.connpassId, connpassId);
++
++		AbstractPage page = startPage("/home/update");
++
++		assertThat(tester.getActionMethodName(), is("update"));
++		assertThat(tester.getDestinationPath(), is("/home/"));
++		assertThat(tester.isRedirect(), is(true));
++
++		UserModel actual = Datastore.get(UserModel.class, UserModel.createKey(TestUtil.TWITTER_USER_ID));
++		assertThat(actual.getZusaarId(), is(zusaarId));
++		assertThat(actual.getPartakeId(), is(partakeId));
++		assertThat(actual.getConnpassId(), is(connpassId));
++		assertThat(actual.getVersion(), is(2L));
++	}
++}
+diff --git a/src/test/java/net/sue445/azusaar/service/KeywordCountServiceTest.java b/src/test/java/net/sue445/azusaar/service/KeywordCountServiceTest.java
+index a49b638..9705c85 100644
+--- a/src/test/java/net/sue445/azusaar/service/KeywordCountServiceTest.java
++++ b/src/test/java/net/sue445/azusaar/service/KeywordCountServiceTest.java
+@@ -127 +126,0 @@ public class KeywordCountServiceTest extends AppEngineTestCase {
+-		System.out.println(actual);
+diff --git a/src/test/java/net/sue445/azusaar/service/KokucheeseFeedServiceTest.java b/src/test/java/net/sue445/azusaar/service/KokucheeseFeedServiceTest.java
+index 58989f9..1b5c314 100644
+--- a/src/test/java/net/sue445/azusaar/service/KokucheeseFeedServiceTest.java
++++ b/src/test/java/net/sue445/azusaar/service/KokucheeseFeedServiceTest.java
+@@ -36 +35,0 @@ public class KokucheeseFeedServiceTest extends AppEngineTestCase {
+-		//System.out.println(actual);
+@@ -39 +37,0 @@ public class KokucheeseFeedServiceTest extends AppEngineTestCase {
+-		//System.out.println(dto);
+diff --git a/src/test/java/net/sue445/azusaar/util/CookieUtilTest.java b/src/test/java/net/sue445/azusaar/util/CookieUtilTest.java
+new file mode 100644
+index 0000000..a95c208
+--- /dev/null
++++ b/src/test/java/net/sue445/azusaar/util/CookieUtilTest.java
+@@ -0,0 +1,42 @@
++package net.sue445.azusaar.util;
++
++import static org.hamcrest.Matchers.*;
++import static org.junit.Assert.*;
++
++import javax.servlet.http.Cookie;
++
++import org.junit.Before;
++import org.junit.Test;
++
++public class CookieUtilTest {
++
++	private Cookie[] cookies;
++
++
++	@Before
++	public void setUp() throws Exception {
++		cookies = new Cookie[]{
++				new Cookie("name1", "value1"),
++				new Cookie("name2", "value2"),
++				new Cookie("name3", "value3"),
++		};
++	}
++
++	@Test
++	public void findValue_Found() throws Exception {
++		String name = "name2";
++
++		String actual = CookieUtil.findValue(cookies, name);
++
++		assertThat(actual, is("value2"));
++	}
++
++	@Test
++	public void findValue_NotFound() throws Exception {
++		String name = "name4";
++
++		String actual = CookieUtil.findValue(cookies, name);
++
++		assertThat(actual, is(nullValue()));
++	}
++}
+diff --git a/src/test/java/net/sue445/azusaar/util/SessionUtilTest.java b/src/test/java/net/sue445/azusaar/util/SessionUtilTest.java
+new file mode 100644
+index 0000000..193d964
+--- /dev/null
++++ b/src/test/java/net/sue445/azusaar/util/SessionUtilTest.java
+@@ -0,0 +1,22 @@
++package net.sue445.azusaar.util;
++
++import static org.hamcrest.Matchers.*;
++import static org.junit.Assert.*;
++import net.sue445.azusaar.util.SessionUtil.SessionKey;
++
++import org.junit.Test;
++import org.slim3.tester.ControllerTestCase;
++
++public class SessionUtilTest extends ControllerTestCase{
++
++	@Test
++	public void putAndGet() {
++		String value = "aaaa";
++
++		SessionUtil.put(tester.request, SessionKey.REQUEST_TOKEN, value);
++
++		String actual = SessionUtil.get(tester.request, SessionKey.REQUEST_TOKEN);
++		assertThat(actual, is(value));
++	}
++
++}
+diff --git a/src/test/java/net/sue445/azusaar/util/TestUtil.java b/src/test/java/net/sue445/azusaar/util/TestUtil.java
+new file mode 100644
+index 0000000..248b648
+--- /dev/null
++++ b/src/test/java/net/sue445/azusaar/util/TestUtil.java
+@@ -0,0 +1,38 @@
++package net.sue445.azusaar.util;
++
++import net.sue445.azusaar.model.UserModel;
++
++import org.slim3.datastore.Datastore;
++
++import twitter4j.auth.AccessToken;
++
++public final class TestUtil {
++	public static String ACCESS_TOKEN = "14540215-QYmH8zti6DVMrhe9EuIII3bdgZ1C3WDghvpF8U6Zo";
++	public static String ACCESS_TOKEN_SECRET = "JOChFP1uXcnLO6cPN2kSLzbZg64qVJBYjxHVTUVM";
++	public static final long TWITTER_USER_ID = 14540215;
++	public static final String SCREEN_NAME = "sue445";
++
++
++	public static AccessToken getMockAccessToken(){
++		return new AccessToken(ACCESS_TOKEN, ACCESS_TOKEN_SECRET);
++	}
++
++	public static UserModel createUserModel(){
++		UserModel model = new UserModel(TWITTER_USER_ID);
++
++		model.setScreenName(SCREEN_NAME);
++		model.setAccessToken(ACCESS_TOKEN);
++		model.setAccessTokenSecret(ACCESS_TOKEN_SECRET);
++		model.setAtndId("26669");
++		model.setZusaarId("agxzfnp1c2Fhci1ocmRyFQsSBFVzZXIiCzE0NTQwMjE1X3R3DA");
++		model.setEventAtndId("C00000012128");
++		model.setConnpassId("sue445");
++		model.setPartakeId("247fe915-dc36-4a9a-a01a-0f6347105633");
++
++		return model;
++	}
++
++	public static void setUpUserModel(){
++		Datastore.put(createUserModel());
++	}
++}
+diff --git a/src/test/java/net/sue445/azusaar/util/TwitterUtilTest.java b/src/test/java/net/sue445/azusaar/util/TwitterUtilTest.java
+new file mode 100644
+index 0000000..20120f5
+--- /dev/null
++++ b/src/test/java/net/sue445/azusaar/util/TwitterUtilTest.java
+@@ -0,0 +1,95 @@
++package net.sue445.azusaar.util;
++
++import static org.hamcrest.CoreMatchers.*;
++import static org.junit.Assert.*;
++
++import javax.servlet.http.Cookie;
++
++import net.sue445.azusaar.util.SessionUtil.SessionKey;
++
++import org.junit.Before;
++import org.junit.Test;
++import org.junit.experimental.runners.Enclosed;
++import org.junit.experimental.theories.DataPoints;
++import org.junit.experimental.theories.Theories;
++import org.junit.experimental.theories.Theory;
++import org.junit.runner.RunWith;
++import org.slim3.tester.AppEngineTestCase;
++import org.slim3.tester.ControllerTestCase;
++
++import twitter4j.Twitter;
++
++
++@RunWith(Enclosed.class)
++public class TwitterUtilTest{
++	public static class GetTwitter extends AppEngineTestCase {
++		@Test
++		public void getTwitter() throws Exception {
++			Twitter actual = TwitterUtil.getTwitter(TestUtil.ACCESS_TOKEN, TestUtil.ACCESS_TOKEN_SECRET);
++			assertThat(actual, is(notNullValue()));
++			assertThat(actual.verifyCredentials().getScreenName(), is("sue445"));
++		}
++	}
++
++	@RunWith(Theories.class)
++	public static class IsAccessTokenValid extends AppEngineTestCase{
++		@DataPoints
++		public static Fixture[] FIXTURES = {
++			new Fixture(TestUtil.ACCESS_TOKEN, TestUtil.ACCESS_TOKEN_SECRET, true),
++			new Fixture("", "", false),
++			new Fixture("aaa", "bbb", false),
++		};
++
++		static class Fixture{
++			String accessToken;
++			String accessTokenSecret;
++			boolean expected;
++
++			public Fixture(String accessToken, String accessTokenSecret, boolean expected) {
++				this.accessToken = accessToken;
++				this.accessTokenSecret = accessTokenSecret;
++				this.expected = expected;
++			}
++		}
++
++		@Theory
++		public void isAccessTokenValid(Fixture fixture) throws Exception {
++			boolean actual = TwitterUtil.isAccessTokenValid(fixture.accessToken, fixture.accessTokenSecret);
++
++			String message = "accessToken=" + fixture.accessToken + ", accessTokenSecret=" + fixture.accessTokenSecret;
++			assertThat(message, actual, is(fixture.expected));
++		}
++	}
++
++	public static class WhenHasCookie extends ControllerTestCase {
++		@Before
++		public void before() {
++			tester.request.addCookie(new Cookie(CookieUtil.ACCESS_TOKEN, TestUtil.ACCESS_TOKEN));
++			tester.request.addCookie(new Cookie(CookieUtil.ACCESS_TOKEN_SECRET, TestUtil.ACCESS_TOKEN_SECRET));
++		}
++
++		@Test
++		public void isAccessTokenValid() throws Exception {
++			boolean actual = TwitterUtil.isAccessTokenValid(tester.request);
++
++			assertThat(actual, is(true));
++		}
++	}
++
++	public static class WhenHasSession extends ControllerTestCase {
++		@Before
++		public void before() {
++			SessionUtil.put(tester.request, SessionKey.ACCESS_TOKEN, TestUtil.getMockAccessToken());
++		}
++
++		@Test
++		public void isAccessTokenValid() throws Exception {
++			boolean actual = TwitterUtil.isAccessTokenValid(tester.request);
++
++			assertThat(actual, is(true));
++		}
++	}
++
++
++}
+diff --git a/war/WEB-INF/appengine-web.xml b/war/WEB-INF/appengine-web.xml
+index 876aeb7..0fcd3a8 100644
+--- a/war/WEB-INF/appengine-web.xml
++++ b/war/WEB-INF/appengine-web.xml
+@@ -4 +4 @@
+-	<version>20120611</version>
++	<version>20120812</version>
+@@ -24 +24 @@
+-	<sessions-enabled>false</sessions-enabled>
++	<sessions-enabled>true</sessions-enabled>
+diff --git a/war/WEB-INF/lib/jstl-1.2.jar b/war/WEB-INF/lib/jstl-1.2.jar
+new file mode 100644
+index 0000000..0fd275e
+Binary files /dev/null and b/war/WEB-INF/lib/jstl-1.2.jar differ
+diff --git a/war/WEB-INF/lib/s3tiger-0.0.3.jar b/war/WEB-INF/lib/s3tiger-0.0.3.jar
+deleted file mode 100644
+index ba4248e..0000000
+Binary files a/war/WEB-INF/lib/s3tiger-0.0.3.jar and /dev/null differ
+diff --git a/war/WEB-INF/lib/scenic3-0.5.1.jar b/war/WEB-INF/lib/scenic3-0.5.1.jar
+new file mode 100644
+index 0000000..3d65267
+Binary files /dev/null and b/war/WEB-INF/lib/scenic3-0.5.1.jar differ
+diff --git a/war/WEB-INF/lib/twitter4j-appengine-2.2.5.jar b/war/WEB-INF/lib/twitter4j-appengine-2.2.5.jar
+deleted file mode 100644
+index 4f3da6b..0000000
+Binary files a/war/WEB-INF/lib/twitter4j-appengine-2.2.5.jar and /dev/null differ
+diff --git a/war/WEB-INF/lib/twitter4j-appengine-2.2.6.jar b/war/WEB-INF/lib/twitter4j-appengine-2.2.6.jar
+new file mode 100644
+index 0000000..86f67aa
+Binary files /dev/null and b/war/WEB-INF/lib/twitter4j-appengine-2.2.6.jar differ
+diff --git a/war/WEB-INF/lib/twitter4j-core-2.2.5.jar b/war/WEB-INF/lib/twitter4j-core-2.2.5.jar
+deleted file mode 100644
+index 7e9ee6b..0000000
+Binary files a/war/WEB-INF/lib/twitter4j-core-2.2.5.jar and /dev/null differ
+diff --git a/war/WEB-INF/lib/twitter4j-core-2.2.6.jar b/war/WEB-INF/lib/twitter4j-core-2.2.6.jar
+new file mode 100644
+index 0000000..930183c
+Binary files /dev/null and b/war/WEB-INF/lib/twitter4j-core-2.2.6.jar differ
+diff --git a/war/WEB-INF/view/common/common.jsp b/war/WEB-INF/view/common/common.jsp
+new file mode 100644
+index 0000000..342d501
+--- /dev/null
++++ b/war/WEB-INF/view/common/common.jsp
+@@ -0,0 +1,6 @@
++<%@page trimDirectiveWhitespaces="true"%>
++<%@page pageEncoding="UTF-8" contentType="text/html; charset=UTF-8"%>
++<%@taglib prefix="c" uri="http://java.sun.com/jsp/jstl/core"%>
++<%@taglib prefix="fmt" uri="http://java.sun.com/jsp/jstl/fmt"%>
++<%@taglib prefix="fn" uri="http://java.sun.com/jsp/jstl/functions"%>
++<%@taglib prefix="f" uri="http://www.slim3.org/functions"%>
+\ No newline at end of file
+diff --git a/war/WEB-INF/view/home/edit.jsp b/war/WEB-INF/view/home/edit.jsp
+new file mode 100644
+index 0000000..9835a38
+--- /dev/null
++++ b/war/WEB-INF/view/home/edit.jsp
+@@ -0,0 +1,55 @@
++<%@page pageEncoding="UTF-8" contentType="text/html; charset=UTF-8"%>
++<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
++<html>
++<head>
++<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
++
++<link rel="stylesheet" href="/css/global.css?20120420" type="text/css"/>
++<title>AZusaar! / Home</title>
++</head>
++<body>
++
++<!-- header -->
++<div class="header">
++登録
++</div>
++<!-- /header -->
++
++
++<!-- main_contents -->
++<div class="main_contents">
++	<form action="${f:url('update')}" method="post">
++		<dl>
++			<dt><span class="zusaar">Zusaar</span></dt>
++			<dd><input type="text" value="${f:h(user.zusaarId)}" name="zusaarId" /></dd>
++			<dd>プロフィールページのURL中のユーザー名を入れてください (http://www.zusaar.com/user/&lt;ユーザー名&gt;)</dd>
++			<dd>例：http://www.zusaar.com/user/agxzfnp1c2Fhci1ocmRyFQsSBFVzZXIiCzE0NTQwMjE1X3R3DA → agxzfnp1c2Fhci1ocmRyFQsSBFVzZXIiCzE0NTQwMjE1X3R3DA</dd>
++
++			<dt><span class="partake">PARTAKE</span></dt>
++			<dd><input type="text" value="${f:h(user.partakeId)}" name="partakeId" /></dd>
++			<dd>プロフィールページのURL中のユーザー名を入れてください (http://partake.in/users/&lt;ユーザー名&gt;)</dd>
++			<dd>例：http://partake.in/users/247fe915-dc36-4a9a-a01a-0f6347105633 → 247fe915-dc36-4a9a-a01a-0f6347105633</dd>
++
++			<dt><span class="connpass">connpass</span></dt>
++			<dd><input type="text" value="${f:h(user.connpassId)}" name="connpassId" /></dd>
++			<dd>プロフィールページのURL中のユーザー名を入れてください (http://connpass.com/user/&lt;ユーザー名&gt;/)</dd>
++			<dd>例：http://connpass.com/user/sue445/ → sue445</dd>
++		</dl>
++		<input type="submit" value="送信">
++	</form>
++	<ul>
++		<li>ATND, eventATNDのIDはTwitterIDから自動的に設定します</li>
++	</ul>
++</div>
++<!-- /main_contents -->
++
++<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
++<script type="text/javascript">
++(function($){
++	$(document).ready(function(){
++	});
++})(jQuery);
++</script>
++
++</body>
++</html>
+diff --git a/war/WEB-INF/view/home/index.jsp b/war/WEB-INF/view/home/index.jsp
+new file mode 100644
+index 0000000..fa8700a
+--- /dev/null
++++ b/war/WEB-INF/view/home/index.jsp
+@@ -0,0 +1,74 @@
++<%@page pageEncoding="UTF-8" contentType="text/html; charset=UTF-8"%>
++<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
++<html>
++<head>
++<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
++
++<link rel="stylesheet" href="/css/global.css?20120420" type="text/css"/>
++<title>AZusaar! / Home</title>
++</head>
++<body>
++
++<!-- header -->
++<div class="header">
++<a href="/">トップに戻る</a>
++</div>
++<!-- /header -->
++
++
++<!-- main_contents -->
++<div class="main_contents">
++	<dl>
++		<dt><span class="zusaar">Zusaar</span></dt>
++		<dd>
++			<c:choose>
++			<c:when test="${empty user.zusaarId}">
++				未登録
++			</c:when>
++			<c:otherwise>
++				<a href="${user.zusaarUrl}">${f:h(user.zusaarId)}</a>
++			</c:otherwise>
++			</c:choose>
++		</dd>
++
++		<dt><span class="partake">PARTAKE</span></dt>
++		<dd>
++			<c:choose>
++			<c:when test="${empty user.partakeId}">
++				未登録
++			</c:when>
++			<c:otherwise>
++				<a href="${user.partakeUrl}">${f:h(user.partakeId)}</a>
++			</c:otherwise>
++			</c:choose>
++		</dd>
++
++		<dt><span class="connpass">connpass</span></dt>
++		<dd>
++			<c:choose>
++			<c:when test="${empty user.connpassId}">
++				未登録
++			</c:when>
++			<c:otherwise>
++				<a href="${user.connpassUrl}">${f:h(user.connpassId)}</a>
++			</c:otherwise>
++			</c:choose>
++		</dd>
++	</dl>
++
++	<a href="${f:url('edit')}">ZusaarなどのユーザーIDを登録する</a><br/>
++	(検索結果のカレンダーに登録済のイベントがハイライトされるようになります)
++</div>
++<!-- /main_contents -->
++
++<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
++<script type="text/javascript" src="/js/userinfo.js?20120701"></script>
++<script type="text/javascript">
++(function($){
++	$(document).ready(function(){
++	});
++})(jQuery);
++</script>
++
++</body>
++</html>
+diff --git a/war/WEB-INF/web.xml b/war/WEB-INF/web.xml
+index 184a3f6..3dfd91b 100644
+--- a/war/WEB-INF/web.xml
++++ b/war/WEB-INF/web.xml
+@@ -49,0 +50,4 @@
++		<filter-name>TwitterOAuthFilter</filter-name>
++		<filter-class>net.sue445.azusaar.filter.TwitterOAuthFilter</filter-class>
++	</filter>
++	<filter>
+@@ -51 +55 @@
+-		<filter-class>org.slim3.controller.FrontController</filter-class>
++		<filter-class>org.slim3.controller.ScenicFrontController</filter-class>
+@@ -74,0 +79,5 @@
++		<filter-name>TwitterOAuthFilter</filter-name>
++		<url-pattern>/home/*</url-pattern>
++		<dispatcher>REQUEST</dispatcher>
++	</filter-mapping>
++	<filter-mapping>
+@@ -142,0 +152,10 @@
++
++	<jsp-config>
++		<jsp-property-group>
++			<url-pattern>*.jsp</url-pattern>
++			<el-ignored>false</el-ignored>
++			<page-encoding>UTF-8</page-encoding>
++			<scripting-invalid>false</scripting-invalid>
++			<include-prelude>/WEB-INF/view/common/common.jsp</include-prelude>
++		</jsp-property-group>
++	</jsp-config>
+diff --git a/war/_home/edit.html b/war/_home/edit.html
+new file mode 100644
+index 0000000..001f87c
+--- /dev/null
++++ b/war/_home/edit.html
+@@ -0,0 +1,61 @@
++<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
++<html>
++<head>
++<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
++
++<link rel="stylesheet" href="../css/global.css?20120420" type="text/css"/>
++<title>AZusaar! / Home</title>
++</head>
++<body>
++
++<!-- header -->
++<div class="header">
++登録
++</div>
++<!-- /header -->
++
++
++<!-- main_contents -->
++<div class="main_contents">
++	<form action="regist" method="post">
++		<dl>
++			<dt><img src="../img/atnd_ico.png" />ATND BETA</dt>
++			<dd><input type="text" value="" id="atnd" name="atnd" /></dd>
++			<dd>プロフィールページのURL中のユーザー名を入れてください (http://atnd.org/users/&lt;ユーザー名&gt;)</dd>
++			<dd>例：http://atnd.org/users/26669 → 26669</dd>
++
++			<dt><img src="../img/eventatnd_ico.png" />eventATND</dt>
++			<dd><input type="text" value="" id="eventatnd" name="eventatnd" /></dd>
++			<dd>プロフィールページのURL中のユーザー名を入れてください (http://atnd.org/event/profile/&lt;ユーザー名&gt;)</dd>
++			<dd>例：http://atnd.org/event/profile/C00000012128 → C00000012128</dd>
++
++			<dt><img src="../img/zusaar_ico.png" />Zusaar</dt>
++			<dd><input type="text" value="" id="zusaar" name="zusaar" /></dd>
++			<dd>プロフィールページのURL中のユーザー名を入れてください (http://www.zusaar.com/user/&lt;ユーザー名&gt;)</dd>
++			<dd>例：http://www.zusaar.com/user/agxzfnp1c2Fhci1ocmRyFQsSBFVzZXIiCzE0NTQwMjE1X3R3DA → agxzfnp1c2Fhci1ocmRyFQsSBFVzZXIiCzE0NTQwMjE1X3R3DA</dd>
++
++			<dt><img src="../img/partake_ico.png" />PARTAKE</dt>
++			<dd><input type="text" value="" id="partake" name="partake" /></dd>
++			<dd>プロフィールページのURL中のユーザー名を入れてください (http://partake.in/users/&lt;ユーザー名&gt;)</dd>
++			<dd>例：http://partake.in/users/247fe915-dc36-4a9a-a01a-0f6347105633 → 247fe915-dc36-4a9a-a01a-0f6347105633</dd>
++
++			<dt><img src="../img/connpass_ico.png" />connpass</dt>
++			<dd><input type="text" value="" id="connpass" name="connpass" /></dd>
++			<dd>プロフィールページのURL中のユーザー名を入れてください (http://connpass.com/user/&lt;ユーザー名&gt;/)</dd>
++			<dd>例：http://connpass.com/user/sue445/ → sue445</dd>
++		</dl>
++		<input type="submit" value="送信">
++	</form>
++</div>
++<!-- /main_contents -->
++
++<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
++<script type="text/javascript">
++(function($){
++	$(document).ready(function(){
++	});
++})(jQuery);
++</script>
++
++</body>
++</html>
+diff --git a/war/css/global.css b/war/css/global.css
+index 2d05131..e64eaa3 100644
+--- a/war/css/global.css
++++ b/war/css/global.css
+@@ -0,0 +1 @@
++
+@@ -248,0 +250,36 @@ label.connpass {
++span.atnd {
++	background-image: url(../img/atnd_ico.png);
++	background-repeat: no-repeat;
++	padding-left: 16px;
++}
++
++span.eventatnd {
++	background-image: url(../img/eventatnd_ico.png);
++	background-repeat: no-repeat;
++	padding-left: 16px;
++}
++
++span.zusaar {
++	background-image: url(../img/zusaar_ico.png);
++	background-repeat: no-repeat;
++	padding-left: 16px;
++}
++
++span.kokucheese {
++	background-image: url(../img/kokucheese_ico.png);
++	background-repeat: no-repeat;
++	padding-left: 16px;
++}
++
++span.partake {
++	background-image: url(../img/partake_ico.png);
++	background-repeat: no-repeat;
++	padding-left: 16px;
++}
++
++span.connpass {
++	background-image: url(../img/connpass_ico.png);
++	background-repeat: no-repeat;
++	padding-left: 16px;
++}
++
+diff --git a/war/index.html b/war/index.html
+index 19db41c..110d3b7 100644
+--- a/war/index.html
++++ b/war/index.html
+@@ -48,6 +48,6 @@ if(userAgent && userAgent.match(/(iPod|iPhone|Android)/i)){
+-			<a href="http://atnd.org/beta/"><img src="./img/atnd_ico.png" />ATND</a>
+-			<a href="http://atnd.org/"><img src="./img/eventatnd_ico.png" />eventATND</a>
+-			<a href="http://www.zusaar.com/"><img src="./img/zusaar_ico.png" />Zusaar</a>
+-			<a href="http://kokucheese.com/"><img src="./img/kokucheese_ico.png" />こくちーず</a>
+-			<a href="http://partake.in/"><img src="./img/partake_ico.png" />PARTAKE</a>
+-			<a href="http://connpass.com/"><img src="./img/connpass_ico.png" />connpass</a>
++			<a href="http://atnd.org/beta/"><span class="atnd">ATND</span></a>
++			<a href="http://atnd.org/"><span class="eventatnd">eventATND</span></a>
++			<a href="http://www.zusaar.com/"><span class="zusaar">Zusaar</span></a>
++			<a href="http://kokucheese.com/"><span class="kokucheese">こくちーず</span></a>
++			<a href="http://partake.in/"><span class="partake">PARTAKE</span></a>
++			<a href="http://connpass.com/"><span class="connpass">connpass</span></a>
+diff --git a/war/js/userinfo.js b/war/js/userinfo.js
+new file mode 100644
+index 0000000..a8c996b
+--- /dev/null
++++ b/war/js/userinfo.js
+@@ -0,0 +1,44 @@
++if (!this.azusaar) {
++	var azusaar = {};
++}
++
++azusaar.userinfo = (function() {
++	// public methods
++	function dispHeader(){
++		$.ajax({
++			async : true,
++			type : "POST",
++			url : "/auth/userInfo",
++			dataType : "json"
++		}).done(function(res, status){
++			if(status != "success"){
++				return;
++			}
++
++			if(res.screenName){
++				// logined
++				$("#userInfoArea").append(
++					$("<b/>").text(res.screenName).after( $("<span/>").text("でログイン中") )
++				);
++				$("#userInfoArea").append("&nbsp;");
++				$("#userInfoArea").append(
++					$("<a/>").attr("href", "/home/").text("ホーム")
++				);
++				$("#userInfoArea").append("&nbsp;");
++				$("#userInfoArea").append(
++					$("<a/>").attr("href", "/auth/logout").text("ログアウト")
++				);
++			} else{
++				// not logined
++				$("#userInfoArea").append(
++					$("<a/>").attr("href", "/home/").text("Twitterアカウントでログイン")
++				);
++			}
++		});
++
++	}
++
++	return {
++		dispHeader : dispHeader
++	};
++}());
