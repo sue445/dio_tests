@@ -6,7 +6,7 @@
     "git log --author=sue445 --remove-empty --oneline --unified=0 --ignore-all-space master..HEAD"
     "plus=2, minus=0, increment=2"
 
-## Suppoered
+## Supported
 * Ruby
  * RSpec
 * Java
