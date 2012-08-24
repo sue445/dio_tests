@@ -20,15 +20,16 @@ class DioTests
         count
       } || 0
 
-    p "plus=#{@plus_count}, minus=#{@minus_count}, increment=#{@plus_count - @minus_count}"
+    puts "plus=#{@plus_count}, minus=#{@minus_count}, increment=#{@plus_count - @minus_count}"
   end
 
   def git_log
     author = `git config --get user.name`.strip
     since_commit = ARGV[0] || "master"
 
-    p "git log --author=#{author} --remove-empty --oneline --unified=0 --ignore-all-space #{since_commit}..HEAD"
-    `git log --author=#{author} --remove-empty --oneline --unified=0 --ignore-all-space #{since_commit}..HEAD`
+    git_log_command = "git log --author=#{author} --remove-empty --oneline --unified=0 --ignore-all-space #{since_commit}..HEAD"
+    puts git_log_command
+    `#{git_log_command}`
   end
 end
 
