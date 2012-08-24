@@ -2,7 +2,7 @@
 #!/usr/bin/ruby
 
 =begin
-Usage: ruby dio_tests/rspec.rb <commit>
+Usage: ruby dio_tests/rspec.rb <since-commit>
 =end
 
 $:.unshift File.dirname(__FILE__)
