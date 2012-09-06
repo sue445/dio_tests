@@ -17,3 +17,5 @@
 ## Required
 * ruby
 * git
+
+[![endorse](http://api.coderwall.com/sue445/endorsecount.png)](http://coderwall.com/sue445)
