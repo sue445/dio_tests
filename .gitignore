@@ -1,2 +1,4 @@
 GemFile.lock
 
+vendor/bundle/
+.bundle/
