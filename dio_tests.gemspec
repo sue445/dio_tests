@@ -8,8 +8,8 @@ Gem::Specification.new do |spec|
   spec.version       = DioTests::VERSION
   spec.authors       = ["sue445"]
   spec.email         = ["sue445@sue445.net"]
-  spec.description   = %q{Do you remember how many sheets of bread you have eaten ?}
-  spec.summary       = %q{count tests from git-log}
+  spec.description   = %q{Do you remember how many tests you have written ?}
+  spec.summary       = %q{count your tests on git-log}
   spec.homepage      = "https://github.com/sue445/dio_tests/"
   spec.license       = "MIT"
 
