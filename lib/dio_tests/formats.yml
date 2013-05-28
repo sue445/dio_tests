@@ -1,0 +1,4 @@
+junit4: "@(Test|Theory)"
+qunit: "test"
+rspec: "its?"
+

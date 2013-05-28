@@ -1,0 +1,26 @@
+#!/usr/bin/ruby
+require "optparse"
+require "dio_tests"
+
+options = {}
+opt = OptionParser.new
+
+opt.on("-s", "--since=SINCE_COMMIT",
+       "git log <SINCE_COMMIT>...HEAD (default: master)") do |v|
+  options[:since_commit] = v
+end
+
+opt.on("-a", "--author=AUTHOR_NAME",
+       "git log --author=<AUTHOR_NAME> (default: use 'user.name' in .gitconfig)") do |v|
+  options[:author] = v
+end
+
+opt.parse!(ARGV)
+
+begin
+  DioTests::Client.new(ARGV[0], options).print_test_count
+rescue => e
+  puts e.message
+  exit 1
+end
+
