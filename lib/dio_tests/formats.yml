@@ -1,4 +1,4 @@
 junit4: "@(Test|Theory)"
-qunit: "test"
-rspec: "its?"
+qunit: "^\\s*test"
+rspec: "^\\s*its?"
 
