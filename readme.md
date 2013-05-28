@@ -6,7 +6,7 @@
 ## Overview
 count test on your git log
 
-    $ ruby dio_tests/rspec.rb master
+    $ dio_tests rspec
     git log --author=sue445 --remove-empty --oneline --unified=0 --ignore-all-space master..HEAD
     plus=2, minus=0, increment=2
 
@@ -26,7 +26,12 @@ Or install it yourself as:
 
 ## Usage
 
-TODO: Write usage instructions here
+```sh
+Usage: dio <format_type> [options]
+    format_type                      test format(ex. rspec, junit4, qunit)
+    -s, --since=SINCE_COMMIT         git log <SINCE_COMMIT>...HEAD (default: master)
+    -a, --author=AUTHOR_NAME         git log --author=<AUTHOR_NAME> (default: use 'user.name' in .gitconfig)
+```
 
 ## Supported
 * Ruby
