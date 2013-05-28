@@ -1,3 +1,5 @@
+# DIO tests [![Build Status](https://travis-ci.org/sue445/dio_tests.png?branch=master)](https://travis-ci.org/sue445/dio_tests)
+
 ![お前は今まで書いたテストの個数を覚えているのか？](https://raw.github.com/sue445/dio_tests/master/img/dio.png)
 
 自分のコミットログからテストを数えます
