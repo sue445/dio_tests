@@ -11,8 +11,8 @@ class DioTests::Client
   end
 
   def print_test_count
-    log = git_log
     format = DioTests::Client.format(@format_type)
+    log = git_log
 
     @plus_count = log.each_line.select{|line| line[0] == "+"}.
       inject(0){|count, line|
