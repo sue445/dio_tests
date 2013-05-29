@@ -27,10 +27,10 @@ Or install it yourself as:
 ## Usage
 
 ```sh
-Usage: dio <format_type> [options]
-    format_type                      test format(ex. rspec, junit4, qunit)
-    -s, --since=SINCE_COMMIT         git log <SINCE_COMMIT>...HEAD (default: master)
-    -a, --author=AUTHOR_NAME         git log --author=<AUTHOR_NAME> (default: use 'user.name' in .gitconfig)
+Usage: dio [options]
+    -f, --format=<format>            supported: junit4,qunit,rspec
+    -s, --since=<since-commit>       git log <since-commit>...HEAD (default: master)
+    -a, --author=<author-name>       git log --author=<author-name> (default: use 'user.name' in .gitconfig)
 ```
 
 ## Supported

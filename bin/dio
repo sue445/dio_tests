@@ -5,20 +5,27 @@ require "dio_tests"
 options = {}
 opt = OptionParser.new
 
-opt.on("-s", "--since=SINCE_COMMIT",
-       "git log <SINCE_COMMIT>...HEAD (default: master)") do |v|
+formats = DioTests::Client.formats.keys.join(",")
+opt.on("-f", "--format=<format>", "supported: #{formats}") do |v|
+  options[:format] = v
+end
+
+opt.on("-s", "--since=<since-commit>",
+       "git log <since-commit>...HEAD (default: master)") do |v|
   options[:since_commit] = v
 end
 
-opt.on("-a", "--author=AUTHOR_NAME",
-       "git log --author=<AUTHOR_NAME> (default: use 'user.name' in .gitconfig)") do |v|
+opt.on("-a", "--author=<author-name>",
+       "git log --author=<author-name> (default: use 'user.name' in .gitconfig)") do |v|
   options[:author] = v
 end
 
 opt.parse!(ARGV)
 
+options[:format] = ARGV[0] unless options[:format]
+
 begin
-  DioTests::Client.new(ARGV[0], options).print_test_count
+  DioTests::Client.new(options).print_test_count
 rescue => e
   puts e.message
   exit 1
