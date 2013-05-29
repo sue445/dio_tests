@@ -1,6 +1,6 @@
 require 'rubygems'
 require 'spork'
-require 'rspec'
+
 #uncomment the following line to use spork with the debugger
 #require 'spork/ext/ruby-debug'
 
@@ -14,6 +14,19 @@ end
 Spork.each_run do
   # This code will be run each time you run your specs.
 
+  require 'rspec'
+  require 'rspec-parameterized'
+  require 'dio_tests'
+  require 'pry'
+
+  $:.unshift(File.join(File.dirname(__FILE__), '..', 'lib'))
+
+  # Requires supporting files with custom matchers and macros, etc,
+  # in ./support/ and its subdirectories.
+  Dir["#{File.dirname(__FILE__)}/../lib/dio_tests/**/*.rb"].each {|f| require f}
+
+  RSpec.configure do |config|
+  end
 end
 
 # --- Instructions ---
